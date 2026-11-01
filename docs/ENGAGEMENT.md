@@ -10,6 +10,7 @@ The director proposes **3 edit options** for every raw video and scores each one
 4. **Nothing covers the face.**
 5. **Intro card and end card** for long-form or channel-intro videos. For Reels or Shorts under 45 s, skip the intro card: the hook *is* the intro.
 6. Brand voice (Kokoro am_fenrir 1.05) only when the clip has no usable audio.
+7. **Dialogue first.** The voice is levelled to -18 dBFS speech RMS. Music sits 20 dB under it while he speaks and 9 dB under in pauses, and effects peak well below the voice. The render's `Audio check` must show the voice leading the background by at least 12 dB. (Lesson from 1 Nov 2026: the voice came out lower than the music.)
 
 ## Scoring (100 points)
 

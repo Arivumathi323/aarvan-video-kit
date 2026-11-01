@@ -106,6 +106,10 @@ Add your recommendation in one line, then ask him to pick: use AskUserQuestion w
 ## 5. Render the chosen edit
 
 1. `--still` frames at the Drop (word time + 0.4 s), at each effect and at any busy moment. Look at them and fix problems.
+   **Sound can't be checked by looking.** Every render prints an `Audio check` line. The voice must lead the background by at least 12 dB. If it shows a WARNING:
+   - lower `music.volume`, or set `"sfx": false`;
+   - then run `$K/aarvan render <plan> --remix`, which rebuilds only the sound in seconds.
+   Never send a video with a voice warning. Arivu's rule: **his voice is never lower than the music or effects.**
 2. Final render: `$K/aarvan render work/option_X.json`. Run it in the background: at 1080p it takes roughly 8–12× the video length on 2 CPUs. Tell him it's rendering.
 3. Send the file with a one-line summary. Also offer one short caption and hashtags for the post, then stop.
 

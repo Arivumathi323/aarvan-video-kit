@@ -621,17 +621,37 @@ def build_audio(E, R, path):
         for t in R.pops: put(fx, pop, t, 0.35)
         if E.sig: put(fx, drop, E.sig['t_out'] - 0.5, 0.8)
         if E.end: put(fx, wh, E.end['start'] - 0.5, 0.5); put(fx, imp, E.end['start'] - 0.02, 0.5)
+    # ---- dialogue-first mix: the voice sets every other level ----
+    db = lambda x: 20 * np.log10(np.sqrt((x ** 2).mean()) + 1e-12)
+    act = np.abs(voice).max(1) > max(0.002, np.abs(voice).max() * 0.06)
+    if act.any():
+        voice *= 10 ** ((-18.0 - db(voice[act])) / 20)          # speech RMS -> -18 dBFS
+        voice = np.tanh(voice * 1.6) / 1.6                       # gentle peak control
+        act = np.abs(voice).max(1) > 0.01
+    v_db = db(voice[act]) if act.any() else -18.0
+    k1 = int(.25 * sr); env = np.convolve(act.astype(float), np.ones(k1) / k1, 'same').clip(0, 1)
+    k2 = int(.15 * sr); env = np.convolve(env, np.ones(k2) / k2, 'same')
+    # sound effects: never louder than the voice (peaks ~6 dB under the voice peak)
+    if np.abs(fx).max() > 0:
+        fx *= min(1.0, (np.abs(voice).max() * 0.4 if act.any() else 0.5) / np.abs(fx).max())
     mix = voice + fx
     if mu is not False:
         m = load(os.path.join(sfxdir, 'music.wav'), sr)[:N]; m = np.pad(m, ((0, N - len(m)), (0, 0)))
-        act = (np.abs(voice).max(1) > 0.02).astype(float)
-        k1 = int(.25 * sr); env = np.convolve(act, np.ones(k1) / k1, 'same').clip(0, 1)
-        k2 = int(.15 * sr); env = np.convolve(env, np.ones(k2) / k2, 'same')
-        vol = mu.get('volume', 0.42)
-        mix += m * (vol - vol * 0.64 * env)[:, None]
+        off = 20 * np.log10(max(mu.get('volume', 0.42), 1e-3) / 0.42)   # plan volume = trim around the defaults
+        under, gaps = v_db - 20 + off, v_db - 9 + off                     # music under speech / in pauses
+        g_under = 10 ** ((under - db(m)) / 20); g_gaps = 10 ** ((gaps - db(m)) / 20)
+        mix += m * (g_gaps + (g_under - g_gaps) * env)[:, None]
+        R._music_under = m * (g_gaps + (g_under - g_gaps) * env)[:, None]
     f = int(0.8 * sr); mix[-f:] *= np.linspace(1, 0, f)[:, None]
     pk = np.abs(mix).max()
-    if pk > 0: mix /= pk / 0.95
+    if pk > 0.98: mix = np.tanh(mix / pk * 1.2) / np.tanh(1.2) * 0.98   # limit, don't scale the voice down
+    # ---- QA: the voice must clearly lead the background while you speak ----
+    if act.any():
+        bg = mix - voice
+        ratio = db(voice[act]) - db(bg[act])
+        R.audio_qa = {'voice_db': round(db(voice[act]), 1), 'background_db': round(db(bg[act]), 1), 'voice_over_background_db': round(ratio, 1)}
+        print(f"Audio check: voice {R.audio_qa['voice_db']} dB, background {R.audio_qa['background_db']} dB -> voice leads by {ratio:.1f} dB",
+              '(OK)' if ratio >= 12 else '(WARNING: voice too low, needs >= 12 dB)', flush=True)
     sf.write(path, mix, sr)
 
 
@@ -640,6 +660,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('plan'); ap.add_argument('--draft', action='store_true')
     ap.add_argument('--still'); ap.add_argument('--sheet', type=int); ap.add_argument('--timeline', action='store_true')
+    ap.add_argument('--remix', action='store_true', help='rebuild only the sound and put it on the existing output video')
     a = ap.parse_args()
     plan = json.load(open(a.plan)); pdir = os.path.dirname(os.path.abspath(a.plan))
     E = Edit(plan, pdir, short=720 if (a.draft or a.still or a.sheet) else None)
@@ -650,6 +671,14 @@ def main():
         if E.sig: print(f'  {E.sig["t_out"]:6.2f}  AARVAN DROP "{E.sig["text"]}"')
         if E.end: print(f'  {E.end["start"]:6.2f}-{E.TOTAL:6.2f}  end card')
         print('  words:', ' '.join(f'{w["w"]}@{w["t0"]:.2f}' for w in E.words)); return
+    if a.remix:
+        if not os.path.exists(E.out): raise SystemExit('render the video first')
+        G2 = Renderer.__new__(Renderer); G2.E = E; Renderer.prepare_graphics(G2)
+        base = os.path.splitext(E.out)[0]; wav = base + '_mix.wav'; build_audio(E, G2, wav)
+        tmp = base + '.remix.tmp.mp4'
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', E.out, '-i', wav, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+                        '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '48000', '-movflags', '+faststart', '-shortest', tmp], check=True)
+        os.replace(tmp, E.out); os.remove(wav); print('Remixed:', E.out); return
     R = Renderer(E); R.prepare_graphics()
     base = os.path.splitext(E.out)[0]
     if a.still or a.sheet:

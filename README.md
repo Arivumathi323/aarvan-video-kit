@@ -32,7 +32,8 @@ $K/aarvan render plan.json --timeline      # print the timeline
 $K/aarvan render plan.json --sheet 8       # 8-frame preview sheet (fast)
 $K/aarvan render plan.json --still 3,12.5  # check frames at output seconds
 $K/aarvan render plan.json --draft         # 720p full render
-$K/aarvan render plan.json                 # final render (1080 short side)
+$K/aarvan render plan.json                 # final render (1080 short side); prints an Audio check (voice must lead by >= 12 dB)
+$K/aarvan render plan.json --remix         # rebuild only the sound onto the finished video (seconds)
 $K/aarvan voice script.txt vo/             # brand voice-over, one line per shot (for silent clips)
 ```
 

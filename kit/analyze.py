@@ -27,12 +27,85 @@ def transcribe(wav, model='base', lang=None):
     return words, info.language
 
 
+FILLERS = {'uh', 'um', 'umm', 'uhh', 'hmm', 'er', 'ah', 'eh'}
+ASR_DIR = os.path.expanduser('~/.cache/aarvan-video-kit/asr')
+PARAKEET = 'sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8'
+PARAKEET_URL = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/' + PARAKEET + '.tar.bz2'
+
+
+def transcribe_parakeet(wav):
+    """Fallback ASR (English) that downloads from GitHub instead of huggingface.co: NVIDIA Parakeet TDT 0.6B via sherpa-onnx."""
+    try:
+        import sherpa_onnx
+    except ImportError:
+        subprocess.run([os.sys.executable, '-m', 'pip', 'install', '-q', 'sherpa-onnx'], check=True)
+        import sherpa_onnx
+    d = os.path.join(ASR_DIR, PARAKEET)
+    if not os.path.exists(os.path.join(d, 'tokens.txt')):
+        os.makedirs(ASR_DIR, exist_ok=True); tb = os.path.join(ASR_DIR, 'p.tar.bz2')
+        print('Downloading the Parakeet speech model from GitHub (one time, ~460 MB)...', flush=True)
+        subprocess.run(['curl', '-sSL', '-o', tb, PARAKEET_URL], check=True)
+        subprocess.run(['tar', 'xjf', tb, '-C', ASR_DIR], check=True); os.remove(tb)
+    r = sherpa_onnx.OfflineRecognizer.from_transducer(encoder=os.path.join(d, 'encoder.int8.onnx'), decoder=os.path.join(d, 'decoder.int8.onnx'),
+                                                      joiner=os.path.join(d, 'joiner.int8.onnx'), tokens=os.path.join(d, 'tokens.txt'),
+                                                      model_type='nemo_transducer', num_threads=max(1, os.cpu_count() or 2))
+    a, sr = sf.read(wav, dtype='float32')
+    if a.ndim > 1: a = a.mean(1)
+    # chunks of <= 24 s, cut in the quietest spot near the end of each window
+    hop = int(sr * 0.02); e = np.array([np.sqrt((a[i:i + hop] ** 2).mean() + 1e-12) for i in range(0, len(a), hop)])
+    bounds, st = [], 0
+    while st < len(a):
+        en = st + 24 * sr
+        if en >= len(a): bounds.append((st, len(a))); break
+        lo, hi = (st + 16 * sr) // hop, en // hop
+        cut = (lo + int(np.argmin(e[lo:hi]))) * hop; bounds.append((st, cut)); st = cut
+    words = []
+    for st, en in bounds:
+        s = r.create_stream(); s.accept_waveform(sr, a[st:en]); r.decode_stream(s); res = s.result
+        off = st / sr; cur = None
+        for tok, ts in zip(res.tokens, res.timestamps):
+            if tok.startswith(' ') or cur is None:
+                if cur: words.append(cur)
+                cur = {'w': tok.strip(), 's': round(off + ts, 3), 'e': round(off + ts + 0.08, 3)}
+            else:
+                cur['w'] += tok; cur['e'] = round(off + ts + 0.08, 3)
+        if cur: words.append(cur)
+    for i in range(len(words)):  # realistic word lengths: ~0.09 s per letter, never past the next word
+        cap = words[i]['s'] + max(0.25, 0.09 * len(words[i]['w']) + 0.15)
+        nxt = words[i + 1]['s'] if i + 1 < len(words) else 1e9
+        words[i]['e'] = round(min(nxt, max(words[i]['e'], words[i]['s'] + 0.12), cap), 3)
+    words = [w for w in words if w['w']]
+    return words, 'en'
+
+
+def apply_fixes(words):
+    """Fix names the speech model mishears (brand.json "asr_fixes": {"wrong words": "Right"})."""
+    from common import BRAND
+    fixes = BRAND.get('asr_fixes', {})
+    if not fixes: return words
+    out, i = [], 0
+    norm = lambda w: re.sub(r"[^\w']", '', w.lower())
+    while i < len(words):
+        hit = None
+        for wrong, right in fixes.items():
+            parts = wrong.lower().split(); n = len(parts)
+            if [norm(w['w']) for w in words[i:i + n]] == parts:
+                tail = re.sub(r"^[\w']+", '', words[i + n - 1]['w'])
+                rw = right.split(); s0, e0 = words[i]['s'], words[i + n - 1]['e']; d = (e0 - s0) / len(rw)
+                hit = ([{'w': x + (tail if k == len(rw) - 1 else ''), 's': round(s0 + k * d, 3), 'e': round(s0 + (k + 1) * d, 3)}
+                        for k, x in enumerate(rw)], n); break
+        if hit: out.extend(hit[0]); i += hit[1]
+        else: out.append(words[i]); i += 1
+    return out
+
+
 def pauses_from_audio(wav, thr_db=-38, min_len=0.22):
     a, sr = sf.read(wav)
     if a.ndim > 1: a = a.mean(1)
     hop = int(sr * 0.02)
     e = np.array([np.sqrt((a[i:i + hop] ** 2).mean() + 1e-12) for i in range(0, len(a) - hop, hop)])
-    db = 20 * np.log10(e + 1e-9); quiet = db < max(thr_db, np.percentile(db, 20) + 6)
+    db = 20 * np.log10(e + 1e-9)
+    quiet = db < min(thr_db, np.percentile(db, 95) - 20)   # relative to the voice, so quiet mics work too
     out, run = [], 0
     for i, q in enumerate(list(quiet) + [False]):
         if q: run += 1
@@ -92,6 +165,7 @@ def contact_sheet(src, info, path, every=None):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('src'); ap.add_argument('out')
     ap.add_argument('--model', default='base'); ap.add_argument('--lang', default='auto')
+    ap.add_argument('--asr', default='auto', help='auto (Whisper, falls back to Parakeet) | parakeet (English, from GitHub)')
     a = ap.parse_args(); os.makedirs(a.out, exist_ok=True)
     info = probe(a.src); res = {'source': os.path.abspath(a.src), 'info': info}
     print(f"{info['w']}x{info['h']}  {info['fps']:.2f}fps  {info['dur']:.1f}s  audio={info['audio']}", flush=True)
@@ -105,9 +179,19 @@ def main():
         if not res['silent']:
             print('Transcribing...', flush=True)
             try:
+                if a.asr == 'parakeet': raise RuntimeError('parakeet requested')
                 res['words'], res['language'] = transcribe(wav, a.model, a.lang)
-            except Exception as ex:  # e.g. no internet for the Whisper model download
-                print('WARNING: transcription failed:', str(ex)[:300], flush=True); res['transcribe_error'] = str(ex)[:300]
+                res['asr'] = 'whisper-' + a.model
+            except Exception as ex:  # e.g. huggingface.co blocked -> English fallback from GitHub
+                print('Whisper unavailable (' + str(ex)[:120] + '); using Parakeet...', flush=True)
+                try:
+                    res['words'], res['language'] = transcribe_parakeet(wav); res['asr'] = 'parakeet-tdt-0.6b-v2'
+                except Exception as ex2:
+                    print('WARNING: transcription failed:', str(ex2)[:300], flush=True); res['transcribe_error'] = str(ex2)[:300]
+            res['words'] = apply_fixes(res['words'])
+            ws = res['words']   # pauses between words are the safest cut points
+            res['word_gaps'] = [[round(ws[i]['e'], 2), round(ws[i + 1]['s'], 2)] for i in range(len(ws) - 1) if ws[i + 1]['s'] - ws[i]['e'] >= 0.3]
+            res['fillers'] = [i for i, w in enumerate(ws) if re.sub(r'\W', '', w['w'].lower()) in FILLERS]
             res['sentences'] = sentences(res['words'])
     else:
         res['silent'] = True

@@ -28,11 +28,9 @@ $K/aarvan analyze <video> work/
 
 This writes `work/analysis.json` (every word with its time, plus pauses and energy) and `work/sheet.jpg` (a timestamped contact sheet). Read the sheet yourself.
 
-If you see `transcription failed`, the Whisper model download was blocked. You can:
+Transcription uses Whisper, and switches automatically to Parakeet (English only, from GitHub) when huggingface.co is blocked. For Tamil speech, ask him to allow `huggingface.co` in Settings → Capabilities, or ask for the timing in seconds.
 
-- run the analysis on his computer instead, if it's linked;
-- ask him to allow `huggingface.co` in Settings → Capabilities;
-- or ask for the timing in seconds.
+Before anchoring effects, fix misheard words in `analysis.json`: change `"w"`, or set `"skip": true` to hide a word from captions.
 
 If the clip is **silent**, say so. Offer the brand voice-over from aarvan-edit-director, or work from seconds.
 
@@ -42,6 +40,7 @@ If the clip is **silent**, say so. Offer the brand voice-over from aarvan-edit-d
 - **Pack effects:** match his words to `$K/docs/EFFECTS.md` and the full table in `$K/vendor/claude-video-effects/SKILL.md`. Use at most 2 pack effects plus the Drop. Keep each one 1.5–4 s. Set `"color": "#FF741A"` where the effect has a colour.
 - Never use `backdrop-word` together with the Drop.
 - If he names an effect that doesn't exist, show the closest 3 from the list.
+- Pack effects are built for vertical phone video. On tight landscape or webcam shots, check frames carefully: camera effects can over-zoom and panels can crowd the face.
 
 ## 4. Write the plan
 

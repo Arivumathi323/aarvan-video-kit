@@ -79,8 +79,9 @@ There are two kinds of time in a plan:
   "nametag": {"at": {"word": "student"}, "name": "ARIVUMATHI S", "sub": "FOUNDER · AARVAN LABS"},
   "stickers": [
     {"at": {"word": "laptop"}, "until": "segment_end", "text": "NO LAPTOP", "x": 0.83, "y": 0.44,
-     "style": "dark", "strike": true}            // style: dark | accent | light
-  ],
+     "style": "dark", "strike": true},           // style: dark | accent | light
+    {"at": {"word": "agent"}, "until": {"word": "agentic", "n": 1}, "text": "01  AI AGENT", "x": 0.975, "y": 0.17}
+  ],                                              // x > 0.9 right-aligns, x < 0.1 left-aligns; same "until" = a list that builds up
   "titles": [                         // big lines; captions hide while they show
     {"at": [{"word": "i", "n": 3}, {"word": "i", "n": 4}], "lines": ["I AM THE TEACHER.", "I AM THE LEARNER."]}
   ],
@@ -94,9 +95,19 @@ There are two kinds of time in a plan:
 }
 ```
 
+Transcript tips (`analysis.json`):
+
+- Fix a misheard word by editing its `"w"`.
+- `"skip": true` keeps a word in the audio but hides it from captions.
+- Fillers (uh, um) are hidden automatically.
+- Mishearings that keep coming back belong in `asr_fixes` in `brand/brand.json`.
+- If Whisper can't download (huggingface.co blocked), the analyzer uses Parakeet TDT 0.6B (English) from GitHub releases.
+
 Rules the renderer follows:
 
 - With `audio: "source"`, the cut between two shots happens in the middle of the transition. Start and end segments in pauses, using `pauses` from `analysis.json`, at least 0.15 s away from words.
+- For a zoom change with no words lost, set the next segment's `in` to the previous segment's `out` minus `transition.dur`.
+- With `audio: "source"`, the voice is cleaned (noise reduction plus levelling) unless `"clean_voice": false`.
 - Shots overlap by `transition.dur`. The output length is the sum of shot lengths, minus the overlaps, plus the intro and end card.
 - Graphics never sit on the face: stickers go on the empty side of the frame, and the Drop word goes behind you.
 

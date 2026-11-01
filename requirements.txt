@@ -6,3 +6,4 @@ soundfile
 mediapipe
 kokoro-onnx
 faster-whisper
+sherpa-onnx

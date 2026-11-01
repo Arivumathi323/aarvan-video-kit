@@ -1,11 +1,31 @@
 {
   "name": "Aarvan Labs",
   "colors": {
-    "accent": [255, 116, 26],
-    "dark": [12, 12, 14],
-    "white": [255, 255, 255],
-    "grey": [175, 175, 182],
-    "stroke": [10, 10, 12]
+    "accent": [
+      255,
+      116,
+      26
+    ],
+    "dark": [
+      12,
+      12,
+      14
+    ],
+    "white": [
+      255,
+      255,
+      255
+    ],
+    "grey": [
+      175,
+      175,
+      182
+    ],
+    "stroke": [
+      10,
+      10,
+      12
+    ]
   },
   "fonts": {
     "display": "Inter-Black.otf",
@@ -19,9 +39,13 @@
     "subtitle": "AI & AUTOMATION DEVELOPER"
   },
   "end_card": {
-    "lines": ["LET'S BUILD", "SOMETHING."],
+    "lines": [
+      "LET'S BUILD",
+      "SOMETHING."
+    ],
     "handle": "@aarvan_labs   ·   aarvanlabs.com",
-    "logo_letter": "A"
+    "logo_letter": "A",
+    "logo_size": 230
   },
   "nametag": {
     "name": "ARIVUMATHI S",
@@ -36,5 +60,20 @@
   "signature": {
     "name": "The Aarvan Drop",
     "rule": "Exactly one per video, on the single most important word."
+  },
+  "asr_fixes": {
+    "aviv maju": "Arivumathi",
+    "aviv marji": "Arivumathi",
+    "arivu mathi": "Arivumathi",
+    "matos": "Madras",
+    "nitel": "n8n",
+    "nitem": "n8n",
+    "agenic": "agentic",
+    "personal handling": "personal branding",
+    "personal drawing": "personal branding",
+    "syllabums": "Silambam",
+    "syllabum": "Silambam",
+    "aarvan labs": "Aarvan Labs",
+    "arvan": "Aarvan"
   }
 }

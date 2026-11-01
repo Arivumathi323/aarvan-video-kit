@@ -121,7 +121,7 @@ class Edit:
                 for w in an['words']:
                     mid = (w['s'] + w['e']) / 2
                     if a0 <= mid < a1:
-                        out.append({'w': w['w'], 'seg': k, 't0': s['start'] + w['s'] - s['in'], 't1': s['start'] + w['e'] - s['in']})
+                        out.append({'w': w['w'], 'seg': k, 'skip': w.get('skip', False), 't0': s['start'] + w['s'] - s['in'], 't1': s['start'] + w['e'] - s['in']})
         else:
             vo = self.p.get('voiceover', {})
             vdir = vo.get('dir') if isinstance(vo, dict) else vo
@@ -255,6 +255,8 @@ class Renderer:
         fx_, fy_, fw_ = self.face(ts)
         cx = fx_ * SW; cy = fy_ * SH + ch * 0.12  # keep the face in the upper third
         x0 = min(max(cx - cw / 2, 0), SW - cw); y0 = min(max(cy - ch / 2, 0), SH - ch)
+        head_top = fy_ * SH - 1.05 * fw_ * SW          # hair line is ~1 face-width above the face centre
+        y0 = max(0.0, min(y0, head_top - 0.04 * ch))    # keep a little headroom (tight webcam shots)
         return np.array([[W / cw, 0, -x0 * W / cw], [0, H / ch, -y0 * H / ch]], np.float32)
 
     def shot(self, k, lt, extra=1.0, blur=0.0, shake=(0, 0)):
@@ -330,7 +332,13 @@ class Renderer:
             sc = fit * (1.45 - 0.45 * land) * (1 + 0.025 * math.sin(max(lt, 0) * 3)) * (1 - 0.15 * out)
             y = word_y - (1 - ease_out((lt + 0.06) / 0.2)) * H * 0.18 - out * H * 0.08
             al = clamp((lt + 0.06) / 0.08) * (1 - out)
-            blit(fr, spr, W / 2, y, scale=sc, alpha=al, mask_below=m)
+            if 'sig_front' not in self.__dict__:   # decide once: how much of the word would the head cover?
+                hw, hh = spr.shape[1] * fit / 2, spr.shape[0] * fit / 2
+                ys, xs = slice(int(max(0, word_y - hh)), int(min(H, word_y + hh))), slice(int(max(0, W / 2 - hw)), int(min(W, W / 2 + hw)))
+                ink = spr[..., 3] > 128
+                cover = float((m[ys, xs] > 0.5).mean()) if mask is not None else 0.0
+                self.sig_front = cover > 0.22 or sg.get('front', False)
+            blit(fr, spr, W / 2, y, scale=sc, alpha=al, mask_below=None if self.sig_front else m)
         # 4) white flash on impact
         if 0 <= lt < 0.1:
             f = 0.28 * (1 - lt / 0.1); fr[:] = fr * (1 - f) + 255 * f
@@ -374,7 +382,9 @@ class Renderer:
         lab = self.S('i_lab', lambda: text_sprite(I['label'] + '  ·  INTRO' if I.get('label_suffix', True) else I['label'], 'label', 22 * u, fill=ACCENT, shadow=False))
         blit(fr, lab, x0, yc - 110 * u, alpha=ease_out((t - .1) / .3), anchor='l')
         big = self.S('i_big', lambda: text_sprite(I['title'], 'display', 132 * u, fill=WHITE, shadow=False))
-        fit = min(1.0, (W - 2 * x0) / big.shape[1]); p = ease_out((t - .15) / .5)
+        has_logo = os.path.exists(os.path.join(ROOT, 'brand', 'logo.png')) and I.get('logo', True)
+        avail = (W * 0.79 - 0.30 * min(W, H) - x0) if (has_logo and not E.vertical) else (W - 2 * x0)
+        fit = min(1.0, avail / big.shape[1]); p = ease_out((t - .15) / .5)
         if p > 0:
             sp = big.copy(); sp[:, int(sp.shape[1] * p):, 3] = 0
             blit(fr, sp, x0 - 14 * u * fit, yc - 10 * u + (1 - p) * 30 * u, scale=fit, anchor='l')
@@ -384,13 +394,20 @@ class Renderer:
         lp = ease_out((t - .35) / .5)
         if lp > 0:
             yy = int(yc + 130 * u * max(fit, .6)); cv2.rectangle(fr, (x0, yy), (x0 + int(300 * u * lp), yy + int(6 * u)), ACCENT, -1)
+        lp = os.path.join(ROOT, 'brand', 'logo.png')
+        if os.path.exists(lp) and I.get('logo', True):
+            sz = int((0.56 if not E.vertical else 0.3) * min(W, H) / (1 if not E.vertical else 1) * (1 if not E.vertical else 1.6))
+            logo = self.S('i_logo', lambda: make_logo(sz, 'A'))
+            q = back_out((t - .25) / .45)
+            lx, ly = (W * 0.79, H * 0.5) if not E.vertical else (W * 0.5, H * 0.22)
+            blit(fr, logo, lx, ly, scale=.6 + .4 * q, alpha=clamp((t - .25) / .2))
         cv2.rectangle(fr, (0, H - int(10 * u)), (W, H), ACCENT, -1)
         return fr
 
     def end_card(self, t, fr):
         E = self.E; W, H, u = E.W, E.H, E.u; ec = E.end; lt = t - ec['start']
         diag_band(fr, lt / 0.45, u=u); cv2.rectangle(fr, (0, H - int(10 * u)), (W, H), ACCENT, -1)
-        logo = self.S('e_logo', lambda: make_logo(int(180 * u), ec.get('logo_letter', 'A')))
+        logo = self.S('e_logo', lambda: make_logo(int(ec.get('logo_size', 230) * u), ec.get('logo_letter', 'A')))
         p = back_out((lt - .05) / .45)
         yb = H * (0.24 if not E.vertical else 0.33)
         blit(fr, logo, W / 2, yb, scale=.6 + .4 * p, alpha=clamp(lt / .25))
@@ -414,7 +431,9 @@ class Renderer:
         cap = E.p.get('captions', {})
         if cap is False or (isinstance(cap, dict) and cap.get('on') is False): return []
         maxn = cap.get('max_words', 3) if isinstance(cap, dict) else 3
+        FILL = {'uh', 'um', 'umm', 'uhh', 'hmm', 'er', 'ah', 'eh'}
         for i, w in enumerate(E.words):
+            if re.sub(r'\W', '', w['w'].lower()) in FILL or w.get('skip'): continue
             ww = mw(w['w'])
             newseg = cur and cur[-1]['seg'] != w['seg']
             gap_t = cur and w['t0'] - cur[-1]['t1'] > 0.5
@@ -498,10 +517,13 @@ class Renderer:
             elif kind == 'sticker':
                 style = d.get('style', 'dark')
                 bg, fg, bd = {'dark': ((18, 18, 20), WHITE, ACCENT), 'accent': (ACCENT, (12, 12, 12), None), 'light': (WHITE, (12, 12, 12), None)}[style]
-                spr = self.S(('st', d['text'], style), lambda: pill_sprite(d['text'], 'display', 30 * u * d.get('scale', 1), bg, fg, border=bd))
+                spr = self.S(('st', d['text'], style), lambda: pill_sprite(d['text'], 'display', (34 if not E.vertical else 30) * u * d.get('scale', 1), bg, fg, border=bd))
                 sc = back_out((t - t0) / .32); al = clamp((t - t0) / .1) * oa
                 x, y = d.get('x', .82) * W, d.get('y', .4) * H + math.sin(t * 2.2 + d.get('x', .8) * 9) * 4 * u
-                blit(fr, spr, x, y, scale=sc, alpha=al)
+                al_ = d.get('align', 'r' if d.get('x', .82) > .9 else ('l' if d.get('x', .82) < .1 else 'c'))
+                blit(fr, spr, x, y, scale=sc, alpha=al, anchor=al_)
+                if al_ == 'r': x = x - spr.shape[1] * sc / 2
+                elif al_ == 'l': x = x + spr.shape[1] * sc / 2
                 if d.get('strike') and t > t0 + .25 and oa > .3:
                     sp = ease_out((t - t0 - .25) / .2); hw = spr.shape[1] / 2 - 30 * u
                     cv2.line(fr, (int(x - hw), int(y)), (int(x - hw + 2 * hw * sp), int(y)), ACCENT, max(2, int(5 * u)), cv2.LINE_AA)
@@ -539,6 +561,9 @@ class Renderer:
 
 def make_logo(sz, letter):
     from PIL import ImageDraw
+    lp = os.path.join(ROOT, 'brand', 'logo.png')
+    if os.path.exists(lp):
+        return np.array(Image.open(lp).convert('RGBA').resize((sz, sz), Image.LANCZOS))
     im = Image.new('RGBA', (sz, sz), (0, 0, 0, 0)); d = ImageDraw.Draw(im); w = max(3, sz // 26)
     d.ellipse((w, w, sz - w, sz - w), fill=(18, 18, 20, 255), outline=ACCENT, width=w)
     f = font('display', int(sz * .51)); bb = f.getbbox(letter)
@@ -564,7 +589,9 @@ def build_audio(E, R, path):
     if E.audio_mode == 'source' and E.info['audio']:
         wav = os.path.join(E.work, 'source48k.wav')
         if not os.path.exists(wav):
-            subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', E.src, '-vn', '-ac', '2', '-ar', str(sr), wav], check=True)
+            af = ['-af', 'highpass=f=80,lowpass=f=12000,afftdn=nf=-25,dynaudnorm=f=200:g=15:p=0.9,acompressor=threshold=0.1:ratio=3:attack=10:release=150'] \
+                if E.p.get('clean_voice', True) else []
+            subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', E.src, '-vn', '-ac', '2', '-ar', str(sr)] + af + [wav], check=True)
         src = load(wav, sr); xf = int(0.03 * sr)
         for k, s in enumerate(E.segs):
             a0, a1 = E.audible(k)

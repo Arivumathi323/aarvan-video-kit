@@ -35,7 +35,15 @@ Then read `work/analysis.json` and **look at `work/sheet.jpg`**. Work out:
 - **Content shape:** steps, numbers, a story, a client, a before/after. This decides which fresh effects fit.
 - **Format:** vertical goes to Reels/Shorts, landscape to YouTube. Ask only if it's unclear where it will be posted.
 
-If you see `transcription failed`, the Whisper model download was blocked. Run the analysis on his linked computer if there is one. Otherwise ask him to allow `huggingface.co` in Settings → Capabilities.
+Transcription uses Whisper. If huggingface.co is blocked, it switches to Parakeet automatically: English only, downloaded from GitHub. For Tamil speech, Whisper is needed, so ask him to allow `huggingface.co` in Settings → Capabilities, or run the analysis on his linked computer.
+
+**Fix the transcript before planning.** Speech models mishear names and tech words: his name, Madras, n8n, XSPEED, Silambam, agentic. Edit `work/analysis.json` directly:
+
+- To correct a word, change its `"w"`.
+- To keep a stutter or false start in the audio but hide it from captions, add `"skip": true`.
+- Filler words (uh, um) are hidden from captions automatically.
+- Add any mishearing that keeps coming back to `asr_fixes` in `$K/brand/brand.json`, so it's fixed automatically next time.
+- When you're unsure, list your guesses for him to confirm in the same message as the options.
 
 If the clip is **silent** (no usable voice), offer the brand voice-over:
 
@@ -57,7 +65,25 @@ Every option must:
 - end with the end card right after the last point;
 - use `"aspect": "9:16"` for Reels and Shorts.
 
-Use word anchors (`{"word": ..., "n": k}`) for graphics, and source seconds for `segments` and pack `effects`.
+Use word anchors (`{"word": ..., "n": k}`) for graphics, and source seconds for `segments` and pack `effects`. `n` counts only the words in the kept shots.
+
+How to cut:
+
+- **To remove something** (a stutter, a false start, dead air, a garbled sentence), end one segment and start the next inside pauses.
+- **To change zoom mid-speech without losing words**, set the next segment's `in` to the previous segment's `out` minus `transition.dur` (0.3). The overlap keeps the audio continuous.
+- Alternate zooms between about 1.0 and 1.15. The renderer keeps headroom on tight webcam shots.
+
+How to add graphics:
+
+- **Lists that build up:** stickers with the same `until` anchor and rising `y` (0.17, 0.28, 0.39…).
+- **Margins:** `x: 0.975` right-aligns to the margin and `x: 0.025` left-aligns.
+- **Pack effects** are built for vertical phone video. On tight landscape or webcam shots, camera effects (locked-on, lean-in) over-zoom and panels (checklist, apple-toggles) crowd the frame. Always check frames, and use our own stickers instead when they don't fit.
+
+**Match the audience.** If the video isn't for social media (a college assignment, a client demo), score for that audience instead (clarity and professionalism), and adapt the branding:
+
+- The intro label becomes, for example, `"SELF INTRODUCTION"` with `"label_suffix": false`.
+- The end card becomes `"lines": ["THANK", "YOU."]` with a plain name line.
+- Music goes quieter.
 
 Score each option out of 100 with the rubric, and be honest. These scores are reasoned estimates, not platform predictions. If `PERFORMANCE.md` has 5 or more rows, let those results weigh more.
 
@@ -80,7 +106,7 @@ Add your recommendation in one line, then ask him to pick: use AskUserQuestion w
 ## 5. Render the chosen edit
 
 1. `--still` frames at the Drop (word time + 0.4 s), at each effect and at any busy moment. Look at them and fix problems.
-2. Final render: `$K/aarvan render work/option_X.json`. At 1080p this takes roughly 6–10× the video length. Tell him it's rendering.
+2. Final render: `$K/aarvan render work/option_X.json`. Run it in the background: at 1080p it takes roughly 8–12× the video length on 2 CPUs. Tell him it's rendering.
 3. Send the file with a one-line summary. Also offer one short caption and hashtags for the post, then stop.
 
 ## 6. Learning loop

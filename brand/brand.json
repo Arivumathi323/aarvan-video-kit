@@ -1,0 +1,40 @@
+{
+  "name": "Aarvan Labs",
+  "colors": {
+    "accent": [255, 116, 26],
+    "dark": [12, 12, 14],
+    "white": [255, 255, 255],
+    "grey": [175, 175, 182],
+    "stroke": [10, 10, 12]
+  },
+  "fonts": {
+    "display": "Inter-Black.otf",
+    "heavy": "Inter-ExtraBold.otf",
+    "label": "Poppins-Bold.ttf",
+    "body": "Poppins-Medium.ttf"
+  },
+  "intro": {
+    "label": "AARVAN LABS",
+    "title": "ARIVUMATHI",
+    "subtitle": "AI & AUTOMATION DEVELOPER"
+  },
+  "end_card": {
+    "lines": ["LET'S BUILD", "SOMETHING."],
+    "handle": "@aarvan_labs   ·   aarvanlabs.com",
+    "logo_letter": "A"
+  },
+  "nametag": {
+    "name": "ARIVUMATHI S",
+    "sub": "FOUNDER  ·  AARVAN LABS"
+  },
+  "voice": {
+    "engine": "kokoro-onnx v1.0",
+    "voice": "am_fenrir",
+    "speed": 1.05,
+    "lang": "en-us"
+  },
+  "signature": {
+    "name": "The Aarvan Drop",
+    "rule": "Exactly one per video, on the single most important word."
+  }
+}

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# aarvan <command> ...   commands: analyze | render | voice | music | effects
+#   aarvan analyze raw.mp4 out_dir          watch the video: words, pauses, energy, contact sheet
+#   aarvan render plan.json [--draft|--still 3,9|--sheet 8|--timeline]
+#   aarvan voice script.txt out_dir         brand voice-over (Kokoro am_fenrir 1.05), one line per shot
+#   aarvan music 30 out_dir [--mood punchy|chill|cinematic] [--bpm 116]
+#   aarvan effects --plan fx.json raw.mp4 out.mp4   run the raw effects pack only (see vendor README)
+DIR="$(cd "$(dirname "$0")" && pwd)"
+PY=python3; [ -x "$DIR/.venv/bin/python" ] && PY="$DIR/.venv/bin/python"
+cmd="$1"; shift || true
+case "$cmd" in
+  analyze) exec "$PY" "$DIR/kit/analyze.py" "$@" ;;
+  render)  exec "$PY" "$DIR/kit/render.py" "$@" ;;
+  voice)   exec "$PY" "$DIR/kit/voiceover.py" "$@" ;;
+  music)   exec "$PY" "$DIR/kit/music.py" "$@" ;;
+  effects) exec "$PY" "$DIR/vendor/claude-video-effects/scripts/fx.py" "$@" ;;
+  *) sed -n '2,8p' "$0"; exit 1 ;;
+esac

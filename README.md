@@ -34,6 +34,7 @@ $K/aarvan render plan.json --still 3,12.5  # check frames at output seconds
 $K/aarvan render plan.json --draft         # 720p full render
 $K/aarvan render plan.json                 # final render (1080 short side); prints an Audio check (voice must lead by >= 12 dB)
 $K/aarvan render plan.json --remix         # rebuild only the sound onto the finished video (seconds)
+$K/aarvan qa plan.json --target reels      # numeric checks: hook, dead air, pacing, safe zones, face, Drop, voice level, loudness
 $K/aarvan voice script.txt vo/             # brand voice-over, one line per shot (for silent clips)
 ```
 
@@ -64,7 +65,9 @@ There are two kinds of time in a plan:
 {
   "source": "raw.mp4",
   "output": "final.mp4",
+  "target": "reels",                  // reels | shorts | youtube | assignment | client (sets the QA limits)
   "aspect": "source",                 // or "9:16", "16:9", "1:1" (crops around the face)
+  "layout": "fill",                   // or "fit": the whole source inside the frame over a blurred copy (low-res landscape -> vertical)
   "size": 1080,                       // short side of the output
   "audio": "source",                  // your own voice; or "voiceover" for silent clips
   "analysis": "work/analysis.json",   // from `aarvan analyze` (needed for captions with audio=source)
@@ -112,7 +115,7 @@ Rules the renderer follows:
 - Shots overlap by `transition.dur`. The output length is the sum of shot lengths, minus the overlaps, plus the intro and end card.
 - Graphics never sit on the face: stickers go on the empty side of the frame, and the Drop word goes behind you.
 
-The brand (colours, fonts, intro, end card, voice) lives in `brand/brand.json`. See `docs/ENGAGEMENT.md` for how edits are chosen, and `docs/EFFECTS.md` for the effects pack.
+The brand (colours, fonts, intro, end card, voice) lives in `brand/brand.json`. **How the editor thinks is in `docs/EDITOR_BRAIN.md`**, which is the source of truth for every decision and has a lessons log. See `docs/ENGAGEMENT.md` for how edits are chosen, and `docs/EFFECTS.md` for the effects pack.
 
 ## Credits
 

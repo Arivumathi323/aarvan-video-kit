@@ -5,7 +5,7 @@ description: Add video effects to Arivu's talking-head videos. Covers the Aarvan
 
 # Aarvan effects
 
-This skill adds effects to a video Arivu sends, and keeps everything else as it is: his audio and his cut. For a full edit (cutting, captions, music, three options to pick from), use the **aarvan-edit-director** skill instead.
+This skill adds effects to a video Arivu sends, and keeps everything else as it is: his audio and his cut. For a full edit (cutting, captions, music, three options to pick from), use the **aarvan-editor** skill instead.
 
 Arivu isn't an editor. Keep replies short and friendly, do all the technical work yourself, and never ask him to run commands.
 
@@ -32,7 +32,7 @@ Transcription uses Whisper, and switches automatically to Parakeet (English only
 
 Before anchoring effects, fix misheard words in `analysis.json`: change `"w"`, or set `"skip": true` to hide a word from captions.
 
-If the clip is **silent**, say so. Offer the brand voice-over from aarvan-edit-director, or work from seconds.
+If the clip is **silent**, say so. Offer the brand voice-over from aarvan-editor, or work from seconds.
 
 ## 3. Pick effects
 
@@ -68,6 +68,8 @@ How to write the plan:
 1. Timeline: `$K/aarvan render <plan> --timeline`
 2. Check frames in the middle of every effect and of the Drop: `$K/aarvan render <plan> --still t1,t2,...`. Look at every frame yourself. Fix anything that covers his face, is cut off or is hard to read, then check again.
 3. Render: `$K/aarvan render <plan>`. A 30 s clip at 1080p takes a few minutes. Use `--draft` for a quick 720p version.
-4. Send him the file and one line saying what was added and where. Remind him to watch it before posting.
+4. **Check the sound.** The render prints an `Audio check`: his voice must lead the effects by at least 12 dB. Effect sounds (whoosh, boom) must never drown him. If it fails, set `"sfx": false` or remove sound-heavy effects, then run `$K/aarvan render <plan> --remix`.
+5. Run `$K/aarvan qa <plan>` and fix any FAIL. The rules behind it are in `$K/docs/EDITOR_BRAIN.md`.
+6. Send him the file and one line saying what was added and where. Remind him to watch it before posting.
 
 Credit: the effect pack is claude-video-effects by @vibha.in.progress (MIT).

@@ -259,14 +259,38 @@ class Renderer:
         y0 = max(0.0, min(y0, head_top - 0.04 * ch))    # keep a little headroom (tight webcam shots)
         return np.array([[W / cw, 0, -x0 * W / cw], [0, H / ch, -y0 * H / ch]], np.float32)
 
+    def fit_box(self):
+        """'fit' layout: the whole source frame sits inside the output (e.g. landscape inside vertical)."""
+        E, F = self.E, self.F
+        fw = E.W; fh = int(round(E.W * F.SH / F.SW))
+        if fh > E.H: fh = E.H; fw = int(round(E.H * F.SW / F.SH))
+        ox = (E.W - fw) / 2; oy = (E.H - fh) * E.p.get('fit_y', 0.42)
+        return ox, oy, fw, fh
+
     def shot(self, k, lt, extra=1.0, blur=0.0, shake=(0, 0)):
         E = self.E; s = E.segs[k]
         lt = min(max(lt, 0), s['dur'] - 1 / FPS)
         ts = s['in'] + lt
         z = s['zoom'] * (1 + s.get('push', 0.035) * lt / s['dur']) * extra
         z *= self.sig_zoom(s['start'] + lt)
-        M = self.crop_M(ts, z); M[0, 2] += shake[0]; M[1, 2] += shake[1]
-        img = cv2.warpAffine(self.F.frame(k, ts), M, (E.W, E.H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
+        if E.p.get('layout') == 'fit':
+            F = self.F; src = self.F.frame(k, ts)
+            ox, oy, fw, fh = self.fit_box()
+            cw, ch = F.SW / z, F.SH / z
+            fx_, fy_, _ = self.face(ts)
+            x0 = min(max(fx_ * F.SW - cw / 2, 0), F.SW - cw); y0 = min(max(fy_ * F.SH - ch / 2, 0), F.SH - ch)
+            M = np.array([[fw / cw, 0, ox - x0 * fw / cw + shake[0]], [0, fh / ch, oy - y0 * fh / ch + shake[1]]], np.float32)
+            sc = max(E.W / F.SW, E.H / F.SH)
+            Mb = np.array([[sc, 0, (E.W - F.SW * sc) / 2], [0, sc, (E.H - F.SH * sc) / 2]], np.float32)
+            tiny = cv2.resize(src, (F.SW // 8, F.SH // 8), interpolation=cv2.INTER_AREA)
+            Mt = Mb.copy(); Mt[0, 0] *= 8; Mt[1, 1] *= 8
+            bg = cv2.GaussianBlur(cv2.warpAffine(tiny, Mt, (E.W, E.H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT), (0, 0), 6 * E.u).astype(np.float32) * 0.45
+            img = cv2.warpAffine(src, M, (E.W, E.H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT)
+            inside = np.zeros((E.H, E.W), np.float32); cv2.rectangle(inside, (int(ox), int(oy)), (int(ox + fw) - 1, int(oy + fh) - 1), 1.0, -1)
+            img = (img.astype(np.float32) * inside[..., None] + bg * (1 - inside[..., None])).astype(np.uint8)
+        else:
+            M = self.crop_M(ts, z); M[0, 2] += shake[0]; M[1, 2] += shake[1]
+            img = cv2.warpAffine(self.F.frame(k, ts), M, (E.W, E.H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
         out = grade(img, E.p.get('look', 'aarvan'), 0.6 if min(self.F.SW, self.F.SH) < 900 else 0.25)
         if blur > 0.5: out = cv2.GaussianBlur(out, (0, 0), blur * E.u)
         self._M, self._ts = M, ts
@@ -311,6 +335,8 @@ class Renderer:
         bp = ease_out((lt + 0.35) / 0.4) if lt < D - 0.35 else 1 - out
         fx_, fy_, fw_ = self.face(self._ts)
         word_y = H * (0.30 if not E.vertical else 0.27)
+        if E.p.get('layout') == 'fit':
+            ox_, oy_, fw_b, fh_b = self.fit_box(); word_y = oy_ + fh_b * 0.24
         if bp > 0:
             band = np.zeros((H, W), np.float32)
             th = (0.24 if not E.vertical else 0.13) * H
@@ -468,7 +494,11 @@ class Renderer:
         E = self.E
         for (a, b) in self.title_windows:
             if a <= t < b: return
-        y = E.H * E.p.get('captions', {}).get('y', 0.86 if not E.vertical else 0.70) if isinstance(E.p.get('captions'), dict) else E.H * (0.86 if not E.vertical else 0.70)
+        cap = E.p.get('captions') if isinstance(E.p.get('captions'), dict) else {}
+        dflt = 0.86 if not E.vertical else 0.70
+        if E.p.get('layout') == 'fit' and E.vertical:
+            ox_, oy_, fw_b, fh_b = self.fit_box(); dflt = min(0.74, (oy_ + fh_b) / E.H + 0.07)
+        y = E.H * cap.get('y', dflt)
         for ci, ch in enumerate(self.chunks):
             t0 = ch[0]['t0']; nxt = self.chunks[ci + 1][0]['t0'] if ci + 1 < len(self.chunks) else 1e9
             t1 = min(ch[-1]['t1'] + 0.3, nxt)
@@ -677,7 +707,7 @@ def main():
         base = os.path.splitext(E.out)[0]; wav = base + '_mix.wav'; build_audio(E, G2, wav)
         tmp = base + '.remix.tmp.mp4'
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', E.out, '-i', wav, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-                        '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '48000', '-movflags', '+faststart', '-shortest', tmp], check=True)
+                        '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.85:level=false', '-ar', '48000', '-movflags', '+faststart', '-shortest', tmp], check=True)
         os.replace(tmp, E.out); os.remove(wav); print('Remixed:', E.out); return
     R = Renderer(E); R.prepare_graphics()
     base = os.path.splitext(E.out)[0]
@@ -709,7 +739,7 @@ def main():
     wav = base + '_mix.wav'; build_audio(E, R, wav)
     out_tmp = base + '.tmp.mp4'
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', tmp, '-i', wav, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-                    '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '48000', '-movflags', '+faststart', '-shortest', out_tmp], check=True)
+                    '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.85:level=false', '-ar', '48000', '-movflags', '+faststart', '-shortest', out_tmp], check=True)
     os.replace(out_tmp, E.out); os.remove(tmp); os.remove(wav)
     print('Done:', E.out)
 

@@ -123,3 +123,5 @@ Add one line for every mistake Arivu catches, and turn it into a rule or a QA ch
 - **2026-11-01 · Pack effects crowded a landscape webcam shot.** They're now only used after checking frames; use our stickers instead.
 - **2026-11-01 · 720 p landscape cropped to vertical was blurry** (2.7× upscale). Now the fit layout and the reframe QA check (≤ 1.6×) handle it.
 - **2026-11-01 · 9.4 s with no visual change** in the assignment edit. Now the pacing QA check flags it.
+- **2026-11-02 · Tamil speech came out as broken English** (first Reel). Parakeet is English-only and huggingface.co's model CDN was blocked. Fix: download `sherpa-onnx-whisper-large-v3` from the k2-fsa/sherpa-onnx GitHub `asr-models` release, run it per phrase with `language="ta"` and again with `"en"` (gives the meaning), keep Parakeet's word timings, and caption in Tanglish (Inter has no Tamil glyphs). Always show him the caption lines to confirm before the final render.
+- **2026-11-02 · QA pacing counted the end card as a still stretch.** Put a sticker on the last lines (e.g. STAY TUNED) so the CTA shot isn't flagged.

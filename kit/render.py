@@ -53,9 +53,14 @@ class Edit:
             d = dict(BRAND['intro']); d.update(it if isinstance(it, dict) else {})
             d.setdefault('dur', 1.7); self.intro = d
         # ---- lay segments on the output timeline
-        t = (self.intro['dur'] - self.T) if self.intro else 0.0
+        # per-shot transition INTO the shot: "trans": 0.6 or {"dur": 0.6, "style": "whip"|"zoom"}; default = plan transition
+        for s in self.segs:
+            tr = s.get('trans')
+            s['T'] = float(tr.get('dur', self.T)) if isinstance(tr, dict) else (float(tr) if isinstance(tr, (int, float)) else self.T)
+            s['tstyle'] = tr.get('style', 'zoom') if isinstance(tr, dict) else 'zoom'
+        t = (self.intro['dur'] - self.segs[0]['T']) if self.intro else 0.0
         for k, s in enumerate(self.segs):
-            s['dur'] = s['out'] - s['in']; s['start'] = t; t += s['dur'] - self.T
+            s['dur'] = s['out'] - s['in']; s['start'] = t; t += s['dur'] - self.Tnext(k)
             s.setdefault('zoom', 1.0)
         self.seg_end = self.segs[-1]['start'] + self.segs[-1]['dur']
         # ---- words (captions + anchors)
@@ -76,6 +81,9 @@ class Edit:
             self.sig = dict(sg); self.sig['t_out'] = self.anchor(sg.get('at', sg.get('t')))
             self.sig.setdefault('dur', 2.4); self.sig.setdefault('text', 'BUILD')
             self.sig['t_src'] = self.out_to_src(self.sig['t_out'])
+
+    def Tnext(self, k):
+        return self.segs[k + 1]['T'] if k + 1 < len(self.segs) else self.T
 
     # ---- time mapping
     def src_to_out(self, ts):
@@ -106,7 +114,7 @@ class Edit:
 
     def until(self, a, t0):
         if a is None or a == 'segment_end':
-            s = self.seg_at(t0 + 1e-3); return s['start'] + s['dur'] - self.T
+            s = self.seg_at(t0 + 1e-3); return s['start'] + s['dur'] - self.Tnext(self.segs.index(s))
         return self.anchor(a)
 
     # ---- words
@@ -140,8 +148,8 @@ class Edit:
 
     def audible(self, k):
         """Source window of segment k whose audio is used (cut happens mid-transition)."""
-        s = self.segs[k]; h = self.T / 2
-        a0 = s['in'] + (h if (k > 0) else 0); a1 = s['out'] - (h if k < len(self.segs) - 1 else 0)
+        s = self.segs[k]
+        a0 = s['in'] + (s['T'] / 2 if (k > 0) else 0); a1 = s['out'] - (self.Tnext(k) / 2 if k < len(self.segs) - 1 else 0)
         return a0, a1
 
 
@@ -382,7 +390,19 @@ class Renderer:
             k = len(E.segs) - 1; return self.shot(k, E.segs[k]['dur']), k
         act = [k for k, s in enumerate(E.segs) if s['start'] <= t < s['start'] + s['dur']]
         if not act: return None, None
-        k = act[-1]; s = E.segs[k]; lt = t - s['start']; sh = self.sig_shake(t)
+        k = act[-1]; s = E.segs[k]; lt = t - s['start']; sh = self.sig_shake(t); T = s['T']
+        if lt < T and k > 0 and s['tstyle'] == 'whip':
+            # whip pan: the old shot slides out left, the new one slides in from the right, with motion blur
+            p = ease_io(lt / T)
+            inc = self.shot(k, lt, shake=sh); M, ts = self._M, self._ts
+            o = self.shot(k - 1, t - E.segs[k - 1]['start'])
+            self._M, self._ts = M, ts
+            off = int(round(p * E.W)); fr = np.empty_like(inc)
+            if off < E.W: fr[:, :E.W - off] = o[:, off:]
+            if off > 0: fr[:, E.W - off:] = inc[:, :off]
+            kb = int(1 + 90 * E.u * math.sin(math.pi * p))
+            if kb > 2: fr = cv2.blur(fr, (kb, 1))
+            return fr, k
         if lt < T and (k > 0 or E.intro):
             p = ease_io(lt / T)
             inc = self.shot(k, lt, extra=1.12 - 0.12 * p, blur=(1 - p) * 6, shake=sh)
@@ -647,7 +667,7 @@ def build_audio(E, R, path):
         wh, pop, imp, drop = (load(os.path.join(sfxdir, n + '.wav'), sr) for n in ['whoosh', 'pop', 'impact', 'drop'])
         if E.intro: put(fx, imp, 0.05, 0.55)
         for k, s in enumerate(E.segs):
-            if k > 0 or E.intro: put(fx, wh, s['start'] - 0.18, 0.45 if k else 0.6)
+            if k > 0 or E.intro: put(fx, wh, s['start'] + s['T'] / 2 - 0.33, (0.6 if s['T'] > 0.45 else 0.45) if k else 0.6)
         for t in R.pops: put(fx, pop, t, 0.35)
         if E.sig: put(fx, drop, E.sig['t_out'] - 0.5, 0.8)
         if E.end: put(fx, wh, E.end['start'] - 0.5, 0.5); put(fx, imp, E.end['start'] - 0.02, 0.5)

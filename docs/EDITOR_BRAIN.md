@@ -34,6 +34,9 @@ Before touching a frame, answer these four questions in one line each:
 - **Cut on breaths.** Segment boundaries go in pauses, at least 0.15 s from any word.
 - **Change the shot size to keep energy without losing words.** Zoom changes of about 1.0 to 1.15 work as an overlap jump cut: the next segment's `in` is the previous `out` minus 0.3.
 - **Pattern interrupts:** something visibly changes at least every 3–4 s for social media and every 6–8 s for long-form. That can be a cut, a punch-in, a sticker, a title, an effect or the Drop.
+- **Scene changes get a smooth transition.** Between different footage (talking head ↔ screen recording, take ↔ take) use `"trans": {"dur": 0.6, "style": "whip"}` on the incoming shot; keep 0.3 s zoom-blur for jump cuts in the same take.
+- **Several clips (takes, screen recordings, screenshots)?** Join them into one vertical source first (ffmpeg concat; screen recordings as a centred block over a blurred copy; screenshots as a slide-up card over his talking), then `analyze` that one file.
+- **Screen-recording shots stay at zoom 1.0.** The face tracker interpolates from the nearest talking-head face, so a punch-in on a screen shot would crop toward the wrong place.
 - **Let big lines breathe.** Hold about 0.4 s after the payoff before the next cut.
 - **Don't stack big moments back to back.** Leave at least 4 s between the Drop and any pack effect.
 - **End fast.** The end card arrives within 0.8 s of the last word, with no dead tail.

@@ -75,7 +75,8 @@ There are two kinds of time in a plan:
   "intro": {"title": "ARIVUMATHI", "subtitle": "AI & AUTOMATION DEVELOPER"},   // or false
   "segments": [                       // shots in order: source in/out seconds, zoom 1.0 = wide
     {"in": 2.4, "out": 6.1, "zoom": 1.0},
-    {"in": 6.5, "out": 11.0, "zoom": 1.22}
+    {"in": 6.5, "out": 11.0, "zoom": 1.22},
+    {"in": 40.0, "out": 46.0, "trans": {"dur": 0.6, "style": "whip"}}   // optional: transition INTO this shot ("whip" pan or "zoom" blur); default = "transition"
   ],
   "transition": {"dur": 0.3},
   "captions": {"max_words": 3},       // or false; "y": 0.86 to move them

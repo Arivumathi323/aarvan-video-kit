@@ -42,7 +42,7 @@ Read `work/analysis.json` and **look at `work/sheet.jpg`**. Then decide:
 - **Orientation:** the source shape versus where it will play. For landscape footage going vertical, choose *fill* or *fit* using the rules in Brain pass 4.
 - **The one message.**
 
-Transcription uses Whisper, with an automatic fallback to Parakeet (English only, downloaded from GitHub) when huggingface.co is blocked. For Tamil speech, ask him to allow huggingface.co in Settings → Capabilities.
+Transcription uses Whisper, with an automatic fallback to Parakeet (English only, downloaded from GitHub) when huggingface.co is blocked. For **Tamil or Tanglish** speech, follow the 2026-11-02 Tamil lesson in the brain: sherpa-onnx Whisper large-v3 from GitHub run per phrase (`ta`, then `en`), Parakeet's word timings, and Tanglish captions confirmed with him before the final render.
 
 **Fix the transcript now.** Word times are already aligned to the real speech.
 - Correct misheard names and tech words in `work/analysis.json` (`"w"`), and mark stutters `"skip": true`.

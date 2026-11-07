@@ -19,16 +19,56 @@ class Report:
     def __init__(self): self.rows = []
     def add(self, level, name, msg): self.rows.append((level, name, msg))
     def show(self):
-        icon = {'PASS': 'PASS', 'WARN': 'WARN', 'FAIL': 'FAIL'}
+        icon = {'PASS': 'PASS', 'WARN': 'WARN', 'FAIL': 'FAIL', 'INFO': 'LOOK'}
         for lv, n, m in self.rows: print(f'{icon[lv]:4}  {n:22} {m}')
         f = sum(1 for r in self.rows if r[0] == 'FAIL'); w = sum(1 for r in self.rows if r[0] == 'WARN')
         print(f'\n{len(self.rows)} checks: {f} fail, {w} warn')
         return f
 
 
+def norm(w): return re.sub(r"[^\w']", '', w.lower())
+
+
+def check_cuts(E, rep):
+    """Transcribe the finished video and read the words around every real cut: half-words or missing words mean a bad edge."""
+    import analyze as A
+    wav = os.path.join(E.work, 'qa_render16k.wav')
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', E.out, '-vn', '-ac', '1', '-ar', '16000', wav], check=True)
+    try:
+        got, _ = A.transcribe(wav, 'base', 'en')
+    except Exception:
+        got, _ = A.transcribe_parakeet(wav)
+    got = A.apply_fixes(got)
+    cuts = []
+    for k in range(1, len(E.segs)):
+        p, s = E.segs[k - 1], E.segs[k]
+        T_ = s.get('T', E.T)
+        if s['in'] > p['out'] - T_ + 0.01:            # a real cut (not an overlap jump)
+            cuts.append(s['start'] + T_ / 2)
+    import difflib
+    bad = []; scores = []
+    exp_all = [w for w in E.words if norm(w['w']) not in FILL and not w.get('skip')]
+    for t in cuts:
+        exp = ' '.join(norm(w['w']) for w in exp_all if t - 0.8 <= (w['t0'] + w['t1']) / 2 <= t + 0.8)
+        hear = ' '.join(norm(w['w']) for w in got if t - 1.0 <= (w['s'] + w['e']) / 2 <= t + 1.0 and norm(w['w']) not in FILL)
+        wide = ' '.join(norm(w['w']) for w in exp_all if t - 1.6 <= (w['t0'] + w['t1']) / 2 <= t + 1.6)
+        sm = difflib.SequenceMatcher(None, exp, hear, autojunk=False)
+        cover = sum(b.size for b in sm.get_matching_blocks()) / max(1, len(exp))        # expected speech that was heard
+        sm2 = difflib.SequenceMatcher(None, hear, wide, autojunk=False)
+        clean = sum(b.size for b in sm2.get_matching_blocks()) / max(1, len(hear))      # heard speech that belongs here
+        scores.append((round(cover, 2), round(clean, 2)))
+        if (exp and cover < 0.6) or (hear and clean < 0.55):
+            bad.append(f"{t:.1f}s (expected '{exp}', heard '{hear}')")
+    E._cut_scores = scores
+    os.remove(wav)
+    rep.add('PASS' if not bad else 'WARN', 'words at cuts', f'{len(cuts)} cuts read back clean' if not bad else
+            f'{len(bad)}/{len(cuts)} cuts sound off, look/listen: ' + '; '.join(bad[:4]))
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('plan'); ap.add_argument('--target')
     ap.add_argument('--no-audio', action='store_true', help='skip the voice-vs-background mix check')
+    ap.add_argument('--no-cuts', action='store_true', help='skip re-transcribing the finished video at every cut')
     a = ap.parse_args()
     plan = json.load(open(a.plan)); pdir = os.path.dirname(os.path.abspath(a.plan))
     E = R.Edit(plan, pdir, short=720)
@@ -57,6 +97,7 @@ def main():
     G = R.Renderer.__new__(R.Renderer); G.E = E; R.Renderer.prepare_graphics(G)
     events = sorted({round(s['start'], 2) for s in E.segs} | {round(t0, 2) for _, t0, _, _ in G.items})
     if E.sig: events.append(E.sig['t_out'])
+    events += [i['t0'] for i in getattr(G, 'inserts', [])] + [i['t1'] for i in getattr(G, 'inserts', [])]
     for e in plan.get('effects', []):
         o = E.src_to_out(e['start'])
         if o is not None: events.append(o)
@@ -75,8 +116,12 @@ def main():
     rep.add('PASS' if E.sig else 'FAIL', 'Aarvan Drop', 'one signature' if E.sig else 'missing: every video gets exactly one Aarvan Drop')
     n_fx = len(plan.get('effects', []))
     rep.add('PASS' if n_fx <= 2 else 'FAIL', 'pack effects', f'{n_fx} (max 2 + the Drop)')
-    if any(e.get('fx') == 'backdrop-word' for e in plan.get('effects', [])) and E.sig:
-        rep.add('FAIL', 'pack effects', 'backdrop-word clashes with the Aarvan Drop')
+    if E.sig:
+        for e in plan.get('effects', []):
+            if e.get('fx') in ('backdrop-word', 'huge-strike', 'crayon-write'):
+                o = E.src_to_out(e['start'])
+                if e['fx'] == 'backdrop-word' or (o is not None and abs(o - E.sig['t_out']) < 4):
+                    rep.add('FAIL', 'pack effects', f"{e['fx']} is a word-behind-the-head move too close to the Aarvan Drop (keep it 4 s away; never backdrop-word)")
     cap = plan.get('captions', True)
     rep.add('PASS' if cap is not False else 'FAIL', 'captions', 'on' if cap is not False else 'off: captions are always on')
     if E.end and words:
@@ -106,11 +151,25 @@ def main():
                 cx = x - 0.12 if al == 'r' else (x + 0.12 if al == 'l' else x)
                 if abs(cx - fx_) < fw_ * 0.8 and abs(y - fy_) < fw_ * 1.1 * (E.W / E.H):
                     issues.append(f'"{d["text"]}" may cover the face at {t0:.1f}s')
+    for ins in getattr(G, 'inserts', []):
+        if ins.get('mode', 'full') != 'pip' or not face or fit: continue
+        ts = E.out_to_src(ins['t0'] + 0.5)
+        if ts is None: continue
+        fx_, fy_, fw_ = face(ts); w_ = ins.get('w', 0.42); x0_ = ins.get('x', 0.72) - w_ / 2
+        if x0_ < fx_ + fw_ * 0.75 and ins.get('x', 0.72) + w_ / 2 > fx_ - fw_ * 0.75:
+            issues.append(f"picture-in-picture at {ins['t0']:.1f}s may cover the face: move it further to the side or make it smaller (w)")
     rep.add('PASS' if not issues else 'WARN', 'graphics placement', 'stickers clear of face and platform UI' if not issues else '; '.join(issues[:5]))
     if E.vertical and E.AR < 1 and E.info['w'] > E.info['h'] and not fit:
         crop_scale = E.H / E.info['h']
         lv = 'PASS' if crop_scale <= 1.6 else 'WARN'
         rep.add(lv, 'reframe', f'landscape cropped to vertical is upscaled {crop_scale:.1f}x' + ('' if lv == 'PASS' else ': use "layout": "fit"'))
+
+    # ---------- captions that can flip the meaning ----------
+    risky = [w for w in words if re.search(r'\d', w['w']) or re.sub(r"[^\w']", '', w['w'].lower()) in
+             ('not', 'no', 'never', "don't", "can't", "won't", "isn't", "didn't", "doesn't", 'nothing', 'without')]
+    if risky:
+        rep.add('INFO', 'check these captions', 'numbers / negatives, compare with what he said: ' +
+                ', '.join(f'"{w["w"]}" @{w["t0"]:.1f}s' for w in risky[:12]) + (' ...' if len(risky) > 12 else ''))
 
     # ---------- sound ----------
     if not a.no_audio:
@@ -133,9 +192,12 @@ def main():
             rep.add(lv, 'loudness', f'{li} LUFS (target -14)')
             if P:
                 pk = float(P[-1]); rep.add('PASS' if pk <= -0.9 else 'WARN', 'true peak', f'{pk} dBFS (target <= -1)' + ('' if pk <= -0.9 else ': run --remix'))
+        if E.audio_mode == 'source' and not a.no_cuts:
+            check_cuts(E, rep)
     else:
         rep.add('PASS', 'loudness', 'not rendered yet (render normalises to -14 LUFS)')
-    sys.exit(1 if rep.show() else 0)
+    code = 1 if rep.show() else 0
+    sys.stdout.flush(); os._exit(code)   # skip MediaPipe's noisy shutdown handler
 
 
 if __name__ == '__main__':

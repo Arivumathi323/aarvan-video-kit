@@ -26,6 +26,10 @@ Read these:
 - `$K/docs/EFFECTS.md` (the effects pack)
 - `$K/docs/PERFORMANCE.md` (what has worked before)
 
+**Not a raw video yet?**
+- **He's about to film:** send him the key points of `$K/docs/FILMING-CARD.md`, and when he sends a short test clip, run `$K/aarvan testshot test.mp4 --for <target>` and tell him exactly what to fix.
+- **He shares a reel he likes:** run `$K/aarvan reference reel.mp4 ref/`, read `ref/REFERENCE.md`, **look at `ref/shots.jpg`**, and describe its pace and style. Then use it as the pattern for his options. Links can't be downloaded here, so ask for the file.
+
 ## 1. Watch (Brain pass 1)
 
 ```bash
@@ -40,7 +44,11 @@ Read `work/analysis.json` and **look at `work/sheet.jpg`**. Then decide:
 
 Transcription uses Whisper, with an automatic fallback to Parakeet (English only, downloaded from GitHub) when huggingface.co is blocked. For Tamil speech, ask him to allow huggingface.co in Settings → Capabilities.
 
-**Fix the transcript now.** Correct misheard names and tech words in `work/analysis.json` (`"w"`), and mark stutters `"skip": true`. Add any mishearing that keeps coming back to `asr_fixes` in `$K/brand/brand.json`. List the guesses you weren't sure about for him to confirm.
+**Fix the transcript now.** Word times are already aligned to the real speech.
+- Correct misheard names and tech words in `work/analysis.json` (`"w"`), and mark stutters `"skip": true`.
+- Check every number and every "not / no / never" against the meaning.
+- Add any mishearing that keeps coming back to `asr_fixes` in `$K/brand/brand.json`.
+- List the guesses you weren't sure about for him to confirm.
 
 If the clip is **silent**, write a script, one line per shot, and show it to him. Then run `$K/aarvan voice script.txt vo/` and use `"audio": "voiceover"`. The voice is always Kokoro am_fenrir at speed 1.05.
 
@@ -59,6 +67,7 @@ Every option follows the brain:
 - **Framing:** use the rules for the orientation. Keep stickers off the face and out of the platform UI. Use `"layout": "fit"` for low-res landscape going vertical.
 - **Sound:** the voice is king. Keep the default mixer, and choose the music mood and volume for the target.
 - **Graphics:** exactly one Aarvan Drop on the message word, at most 2 pack effects, captions on, and stickers that name real things he said.
+- **Show the work:** when he mentions a tool, flow or result and has a screen recording (or it suits an animation), add an `inserts` entry, full screen 2–5 s or a `pip` card beside his face. For an animated n8n-style flow or UI screen: run `$K/aarvan insert --new flow work/flow/`, edit its `index.html` texts and timing, then run `$K/aarvan insert work/flow/ work/flow.mp4`.
 - **Look:** `"look": "aarvan"`, or `"none"` for overexposed webcams.
 - **Target:** set `"target"` in each plan.
 
@@ -73,15 +82,17 @@ Send the 3 sheets and a compact table: score (for this audience), hook, where th
 
 ## 4. Render and prove it (Brain pass 8)
 
-1. `--still` frames at the Drop (word time + 0.4 s), at each effect, at the busiest moment, and at the first and last second. Look at every one.
-2. Final render, in the background: `$K/aarvan render work/option_X.json`. It takes roughly 8–12× the video length at 1080p on 2 CPUs.
-3. Check the `Audio check` line. The voice must lead by at least 12 dB. Then run `$K/aarvan qa work/option_X.json` again, which now also checks loudness and true peak on the real file.
+1. Run `$K/aarvan render work/option_X.json --beats` and read the beat sheet's **"Cut out"** list. If a real word appears there, a cut ate it, so fix the segment. Send him the beat sheet with your summary.
+2. Run `--cutsheet` (a still after every cut and graphic) and `--still` frames at the Drop (word time + 0.4 s) and each effect or insert. Look at every one.
+3. Final render, in the background: `$K/aarvan render work/option_X.json`. It takes roughly 8–12× the video length at 1080p on 2 CPUs.
+4. Check the `Audio check` line. The voice must lead by at least 12 dB. Then run `$K/aarvan qa work/option_X.json` again. It now also checks loudness and true peak on the real file, and **reads back the words at every cut**. For any cut it flags, look at that spot, fix the edge, and re-render or `--remix`.
    - For a sound problem, fix the plan and run `--remix`, which takes seconds.
    - **Never send a video with a FAIL.**
-4. Send the file with a one-line summary. For portals with upload limits, offer a smaller copy (`ffmpeg -c:v libx264 -crf 24 -c:a copy`). Tell him honestly that you can't *listen*, so he should watch it once before posting or submitting. For social media, also offer a caption and hashtags.
+5. Send the file plus the automatic `_phone.mp4` (under 30 MB, for WhatsApp and upload portals), with a one-line summary. Tell him honestly that you can't *listen*, so he should watch it once before posting or submitting. For social media, also offer a caption and hashtags.
 
 ## 5. Learn
 
+- **"Make that the default" / "always do this":** add the rule to "Arivu's saved defaults" in `EDITOR_BRAIN.md` (date, rule, where it came from) and push it. Follow saved defaults on every future edit.
 - **When he spots a mistake:** don't argue. Find the cause with numbers, fix the kit or the rules, and add a line to the Lessons log in `EDITOR_BRAIN.md`. Add a QA check if it's measurable, then push to the repo if this session can.
 - **For posted videos:** after 7 days, ask once for views, average watch %, likes, shares and saves (or pull them from the YouTube connector), and add a row to `docs/PERFORMANCE.md`.
 

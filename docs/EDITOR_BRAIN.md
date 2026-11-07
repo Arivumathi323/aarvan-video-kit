@@ -20,6 +20,10 @@ Before touching a frame, answer these four questions in one line each:
 | assignment | source shape | any | 6 s | 8 s | yes, with a "SELF INTRODUCTION"-style label | THANK YOU + name |
 | client | ask | ≤ 5 min | 5 s | 6 s | yes | client's CTA |
 
+**Before filming:** point him to `docs/FILMING-CARD.md`, and check a 5–10 s test clip with `aarvan testshot test.mp4 --for <target>`. Fixing light, headroom or a quiet mic before recording beats any edit.
+
+**Copying a style:** if he shares a reel he likes, run `aarvan reference reel.mp4 ref/`. Read `REFERENCE.md` and look at `shots.jpg`, then match its pace (shot length, hook timing, graphics rhythm), not its exact content. Instagram links can't be downloaded from here, so he attaches the file.
+
 ## Pass 2 · Story
 
 - **Find the hook.** It's the most surprising, useful or emotional line, and it's often not the first one. For social media, open on it, even if that means moving it to the front as a cold open.
@@ -31,7 +35,8 @@ Before touching a frame, answer these four questions in one line each:
 
 ## Pass 3 · Rhythm
 
-- **Cut on breaths.** Segment boundaries go in pauses, at least 0.15 s from any word.
+- **Cut on breaths.** Segment boundaries go in pauses, at least 0.15 s from any word. The renderer then snaps every real cut into the actual silence in the audio, with at least 60 ms of quiet around each fade, because transcript word times drift by up to 0.5 s. Never cut inside a word.
+- **Approve the cut on paper first:** `aarvan render plan --beats` writes a beat sheet (every shot, its words, what's on screen, and a "Cut out" list of exactly what was removed). Read the "Cut out" list: a real word there means a cut ate it.
 - **Change the shot size to keep energy without losing words.** Zoom changes of about 1.0 to 1.15 work as an overlap jump cut: the next segment's `in` is the previous `out` minus 0.3.
 - **Pattern interrupts:** something visibly changes at least every 3–4 s for social media and every 6–8 s for long-form. That can be a cut, a punch-in, a sticker, a title, an effect or the Drop.
 - **Scene changes get a smooth transition.** Between different footage (talking head ↔ screen recording, take ↔ take) use `"trans": {"dur": 0.6, "style": "whip"}` on the incoming shot; keep 0.3 s zoom-blur for jump cuts in the same take.
@@ -88,7 +93,12 @@ Before touching a frame, answer these four questions in one line each:
 - **Lists that build up** (`until` set to the same anchor) are good for "my projects" and "3 tips" segments.
 - **Name tag** on the first mention of his name. For Reels under 20 s, skip it.
 - **Captions always on:** 2–3 words at a time, with the active word in orange.
-- **Fix misheard words before anything else** in `analysis.json`. A wrong caption looks careless.
+- **Fix misheard words before anything else** in `analysis.json`. A wrong caption looks careless. Check **every number and every "not / no / never"** against what he actually said: one wrong small word flips the meaning (QA lists them under LOOK).
+- **Show, don't just tell:** when he talks about a tool, a flow or a result, cut to it.
+  - Use `inserts` for a screen recording, B-roll, or a HyperFrames animation made with `aarvan insert`. The `brand/hyperframes/flow` template is an n8n-style flow.
+  - Full screen for 2–5 s while his voice continues, or a picture-in-picture card (`mode: "pip"`) placed beside his face, never over it.
+  - Every number on screen needs a source he can name; otherwise say it as an estimate.
+- **Word-behind-the-head moves** (`backdrop-word`, `huge-strike`, `crayon-write`) stay 4 s or more away from the Aarvan Drop, so the Drop stays special.
 - **Brand:** orange #FF741A, black and white; Inter Black and Poppins; the logo on intro and end cards.
 
 ## Pass 7 · Look
@@ -101,8 +111,12 @@ Before touching a frame, answer these four questions in one line each:
 
 1. `aarvan qa plan.json --target <target>`. There must be **no FAIL**. Explain any WARN or fix it.
 2. **Look at the preview sheet and the `--still` frames:** the Drop, every effect, every busy moment, the first and last second.
-3. **After the final render**, check the `Audio check` line and run `aarvan qa` again. Now it also measures the loudness of the real file.
-4. **What you can't check:** say so plainly. Nobody has actually *listened* to the video, so ask him to watch it once before posting or submitting.
+3. **After the final render**, check the `Audio check` line and run `aarvan qa` again. Now it also:
+   - measures loudness and true peak on the real file;
+   - **transcribes the finished video and reads the words at every cut**, so a half-word or a missing word shows up as a WARN with the time. Look at those spots.
+4. **Contact sheet at every cut:** run `aarvan render plan --cutsheet` and look for text on the face, a caption over the chin, a label showing before the word is said, or a card left on screen too long.
+5. **Deliver** the full file plus the automatic `_phone.mp4` (under 30 MB) for WhatsApp and upload portals.
+6. **What you can't check:** say so plainly. Nobody has actually *listened* to the video, so ask him to watch it once before posting or submitting.
 
 ---
 
@@ -114,6 +128,12 @@ When he asks for options, make them genuinely different in **approach**, not jus
 - or, for social media, punchy versus cinematic versus trend mix.
 
 Score each option for *that* audience using the rubric in `ENGAGEMENT.md`, recommend one, and let him pick.
+
+## Arivu's saved defaults
+
+When he says **"make that the default"** (or "always do this"), add a line here: the date, the rule, and where it came from. These override the general rules above.
+
+- 2026-11-01 · every video · his voice is never lower than the music or sound effects (assignment video note)
 
 ## Lessons log
 
@@ -128,3 +148,7 @@ Add one line for every mistake Arivu catches, and turn it into a rule or a QA ch
 - **2026-11-01 · 9.4 s with no visual change** in the assignment edit. Now the pacing QA check flags it.
 - **2026-11-02 · Tamil speech came out as broken English** (first Reel). Parakeet is English-only and huggingface.co's model CDN was blocked. Fix: download `sherpa-onnx-whisper-large-v3` from the k2-fsa/sherpa-onnx GitHub `asr-models` release, run it per phrase with `language="ta"` and again with `"en"` (gives the meaning), keep Parakeet's word timings, and caption in Tanglish (Inter has no Tamil glyphs). Always show him the caption lines to confirm before the final render.
 - **2026-11-02 · QA pacing counted the end card as a still stretch.** Put a sticker on the last lines (e.g. STAY TUNED) so the CTA shot isn't flagged.
+- **2026-11-07 · Word times were up to 0.5 s late** (Parakeet stamped "College" after he finished saying it). Now `refine_word_times` aligns words to the real speech (78% → 85% of word time on speech).
+- **2026-11-07 · A word tail was clipped at a cut** ("branding" at 92.7 s; found by the new read-back check). Now cut edges snap into real silence with a 60 ms margin.
+- **2026-11-07 · His head hid the middle of the Drop word in the vertical fit layout** ("AG…TIC"). Now it measures hidden *letters* (not the word's box) on the first frame, and brings the word to the front if more than 10% is covered. Recurring mishearings (go code → go-kart, athletic/aesthetic OS → agentic OS) were added to `asr_fixes`.
+- **2026-11-07 · Ideas adopted from the Cyber Voyage guide:** johnACQ/reel-kit (read-back at cuts, number/"not" checks, beat sheet, filming card, phone copy, saved defaults) and Vibha's /watch idea (`aarvan reference`). HyperFrames is used for inserts. Remotion and rohandindokar/reel_kit were skipped (they overlap with ours, and they're licensing-limited or made for faceless reels).

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1920, height=1080" />
+<script src="gsap.min.js"></script>
+<style>
+  @font-face { font-family: InterBlack; src: url(Inter-Black.otf); }
+  @font-face { font-family: PoppinsB; src: url(Poppins-Bold.ttf); }
+  :root { --ground:#0c0c0e; --ink:#fff; --accent:#FF741A; --card:#18181b; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:1920px; height:1080px; overflow:hidden; background:var(--ground); }
+  #root { position:relative; width:100%; height:100%; font-family:PoppinsB, sans-serif; }
+  .band { position:absolute; right:-200px; top:-120px; width:700px; height:180px; background:var(--accent); transform:rotate(38deg); }
+  .label { position:absolute; left:140px; top:130px; color:var(--accent); font-size:30px; letter-spacing:4px; }
+  .title { position:absolute; left:136px; top:180px; color:var(--ink); font-family:InterBlack; font-size:110px; letter-spacing:-2px; }
+  .node { position:absolute; top:520px; width:380px; height:200px; border-radius:28px; background:var(--card);
+          border:4px solid #2a2a30; display:flex; flex-direction:column; justify-content:center; padding-left:44px; }
+  .node .k { color:#8a8a94; font-size:26px; letter-spacing:3px; }
+  .node .v { color:var(--ink); font-family:InterBlack; font-size:54px; margin-top:6px; }
+  .node.hot { border-color:var(--accent); box-shadow:0 0 60px rgba(255,116,26,.35); }
+  #n1 { left:140px; } #n2 { left:770px; } #n3 { left:1400px; }
+  .wire { position:absolute; top:616px; height:8px; background:var(--accent); transform-origin:left center; border-radius:4px; }
+  #w1 { left:520px; width:250px; } #w2 { left:1150px; width:250px; }
+  .dot { position:absolute; top:608px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 0 24px #fff; }
+  .bar { position:absolute; left:0; bottom:0; width:100%; height:14px; background:var(--accent); }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-duration="5" data-width="1920" data-height="1080">
+  <div class="band clip" id="band" data-start="0" data-duration="5" data-track-index="0"></div>
+  <div class="label clip" id="label" data-start="0" data-duration="5" data-track-index="1">AARVAN LABS · AUTOMATION</div>
+  <div class="title clip" id="title" data-start="0" data-duration="5" data-track-index="2">MY n8n FLOW</div>
+  <div class="node clip" id="n1" data-start="0" data-duration="5" data-track-index="3"><div class="k">TRIGGER</div><div class="v">New lead</div></div>
+  <div class="wire clip" id="w1" data-start="0" data-duration="5" data-track-index="4"></div>
+  <div class="node clip" id="n2" data-start="0" data-duration="5" data-track-index="5"><div class="k">AI AGENT</div><div class="v">Qualify</div></div>
+  <div class="wire clip" id="w2" data-start="0" data-duration="5" data-track-index="6"></div>
+  <div class="node clip" id="n3" data-start="0" data-duration="5" data-track-index="7"><div class="k">WHATSAPP</div><div class="v">Reply</div></div>
+  <div class="dot clip" id="dot" data-start="0" data-duration="5" data-track-index="8"></div>
+  <div class="bar clip" id="bar" data-start="0" data-duration="5" data-track-index="9"></div>
+</div>
+<script>
+  const tl = gsap.timeline({ paused: true });
+  tl.from("#band", { x: 500, y: -300, duration: 0.5, ease: "power3.out" }, 0)
+    .from("#label", { opacity: 0, y: 20, duration: 0.3 }, 0.15)
+    .from("#title", { opacity: 0, y: 40, duration: 0.45, ease: "power3.out" }, 0.2)
+    .from("#n1", { opacity: 0, scale: 0.6, duration: 0.4, ease: "back.out(2)" }, 0.6)
+    .from("#w1", { scaleX: 0, duration: 0.4, ease: "power2.inOut" }, 1.0)
+    .from("#n2", { opacity: 0, scale: 0.6, duration: 0.4, ease: "back.out(2)" }, 1.3)
+    .from("#w2", { scaleX: 0, duration: 0.4, ease: "power2.inOut" }, 1.7)
+    .from("#n3", { opacity: 0, scale: 0.6, duration: 0.4, ease: "back.out(2)" }, 2.0)
+    .fromTo("#dot", { x: 520, opacity: 0 }, { x: 1390, opacity: 1, duration: 1.4, ease: "none" }, 2.5)
+    .to("#n1", { className: "node clip hot", duration: 0.01 }, 2.5)
+    .to("#n2", { className: "node clip hot", duration: 0.01 }, 3.0)
+    .to("#n3", { className: "node clip hot", duration: 0.01 }, 3.85)
+    .to("#dot", { opacity: 0, duration: 0.2 }, 3.9)
+    .from("#bar", { scaleX: 0, transformOrigin: "left", duration: 0.5 }, 0);
+  window.__timelines["main"] = tl;
+  tl.seek(0);
+</script>
+</body>
+</html>

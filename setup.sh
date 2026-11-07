@@ -3,7 +3,7 @@
 set -e
 cd "$(dirname "$0")"
 EFFECTS_REPO=https://github.com/Vibha-Ramprakash/claude-video-effects.git
-EFFECTS_COMMIT=99c9a3393ee14d39bea155a05c73dc069f02f16f
+EFFECTS_COMMIT=93140a976dcd1c78bda8819fa432ca7b4f260bf7
 
 command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null || { echo "NEED_FFMPEG: install ffmpeg (Ubuntu/WSL: sudo apt install ffmpeg, Mac: brew install ffmpeg)"; exit 1; }
 
@@ -11,7 +11,9 @@ command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null || { echo "NEED_FF
 if [ ! -f vendor/claude-video-effects/scripts/fx.py ]; then
   mkdir -p vendor
   git clone -q "$EFFECTS_REPO" vendor/claude-video-effects
-  git -C vendor/claude-video-effects checkout -q "$EFFECTS_COMMIT"
+fi
+if [ "$(git -C vendor/claude-video-effects rev-parse HEAD)" != "$EFFECTS_COMMIT" ]; then   # upgrade older installs
+  git -C vendor/claude-video-effects fetch -q origin && git -C vendor/claude-video-effects checkout -q "$EFFECTS_COMMIT"
 fi
 
 # 2) python packages: a local .venv when possible, otherwise the system python

@@ -4,6 +4,10 @@
 #   aarvan render plan.json [--draft|--still 3,9|--sheet 8|--timeline]
 #   aarvan voice script.txt out_dir         brand voice-over (Kokoro am_fenrir 1.05), one line per shot
 #   aarvan music 30 out_dir [--mood punchy|chill|cinematic] [--bpm 116]
+#   aarvan testshot test.mp4 [--for reels|youtube|assignment]   check framing, light and sound before filming
+#   aarvan reference reel.mp4 out_dir         break down a reel you want to copy the style of (cuts, pace, hook, tempo, stills)
+#   aarvan insert <html_project> out.mp4      render a HyperFrames animation (n8n flow, UI screen) to drop into an edit
+#   aarvan insert --new flow my_flow/          start from the Aarvan flow template
 #   aarvan qa plan.json [--target reels|shorts|youtube|assignment|client]   numeric checks before/after render
 #   aarvan effects --plan fx.json raw.mp4 out.mp4   run the raw effects pack only (see vendor README)
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -14,7 +18,10 @@ case "$cmd" in
   render)  exec "$PY" "$DIR/kit/render.py" "$@" ;;
   voice)   exec "$PY" "$DIR/kit/voiceover.py" "$@" ;;
   music)   exec "$PY" "$DIR/kit/music.py" "$@" ;;
+  testshot) exec "$PY" "$DIR/kit/testshot.py" "$@" ;;
+  reference) exec "$PY" "$DIR/kit/reference.py" "$@" ;;
+  insert)  exec "$PY" "$DIR/kit/insert.py" "$@" ;;
   qa)      exec "$PY" "$DIR/kit/qa.py" "$@" ;;
   effects) exec "$PY" "$DIR/vendor/claude-video-effects/scripts/fx.py" "$@" ;;
-  *) sed -n '2,9p' "$0"; exit 1 ;;
+  *) sed -n '2,13p' "$0"; exit 1 ;;
 esac

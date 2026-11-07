@@ -21,6 +21,13 @@ def transcribe(wav, model='base', lang=None):
     except ImportError:
         subprocess.run([os.sys.executable, '-m', 'pip', 'install', '-q', 'faster-whisper'], check=True)
         from faster_whisper import WhisperModel
+    cached = os.path.isdir(os.path.expanduser(f'~/.cache/huggingface/hub/models--Systran--faster-whisper-{model}'))
+    if not cached:   # fail fast when huggingface.co is blocked, so the Parakeet fallback starts right away
+        import urllib.request
+        try:
+            urllib.request.urlopen(f'https://huggingface.co/Systran/faster-whisper-{model}/resolve/main/config.json', timeout=6)
+        except Exception as ex:
+            raise RuntimeError(f'huggingface.co not reachable ({str(ex)[:60]})')
     m = WhisperModel(model, device='cpu', compute_type='int8')
     segs, info = m.transcribe(wav, word_timestamps=True, vad_filter=True, language=None if lang in (None, 'auto') else lang)
     words = [{'w': w.word.strip(), 's': round(w.start, 3), 'e': round(w.end, 3)} for s in segs for w in (s.words or [])]
@@ -76,6 +83,58 @@ def transcribe_parakeet(wav):
         words[i]['e'] = round(min(nxt, max(words[i]['e'], words[i]['s'] + 0.12), cap), 3)
     words = [w for w in words if w['w']]
     return words, 'en'
+
+
+def refine_word_times(words, wav):
+    """Line word timings up with the real speech in the audio.
+    Speech models stamp words up to ~0.5 s off; captions and graphics then land late. Two steps:
+    1) find the overall lag that puts the most word time on voiced audio and remove it;
+    2) any word still sitting mostly in silence is pulled into the nearest speech next to it."""
+    if not words: return words
+    a, sr = sf.read(wav)
+    if a.ndim > 1: a = a.mean(1)
+    hop = int(sr * 0.01); e = np.array([np.sqrt((a[i:i + hop] ** 2).mean() + 1e-12) for i in range(0, len(a) - hop, hop)])
+    db = 20 * np.log10(e + 1e-9); voiced = db > max(np.percentile(db, 95) - 28, np.percentile(db, 15) + 8)
+    def vfrac(s0, e0):
+        i, j = int(s0 * 100), max(int(s0 * 100) + 1, int(e0 * 100))
+        return voiced[max(0, i):min(len(voiced), j)].mean() if j > i and i < len(voiced) else 0.0
+    best = max(np.arange(-0.5, 0.51, 0.02), key=lambda L: np.mean([vfrac(w['s'] + L, w['e'] + L) for w in words]))
+    out = [dict(w, s=round(max(0, w['s'] + best), 3), e=round(max(0, w['e'] + best), 3)) for w in words]
+    def block(i):                      # the speech block (gaps < 0.15 s) that contains frame i
+        a_ = i; b_ = i
+        while a_ > 0 and voiced[max(0, a_ - 15):a_].any(): a_ -= 1
+        while b_ < len(voiced) - 1 and voiced[b_ + 1:b_ + 16].any(): b_ += 1
+        return a_ / 100, (b_ + 1) / 100
+    def refit(idx, a_, b_):           # spread these words evenly (by length) across [a_, b_]
+        wt = [max(2, len(out[i]['w'])) for i in idx]; tot = sum(wt); t = a_
+        for i, x in zip(idx, wt):
+            d = (b_ - a_) * x / tot; out[i]['s'], out[i]['e'] = round(t, 3), round(t + d, 3); t += d
+    for k in range(len(out)):
+        w = out[k]
+        if vfrac(w['s'], w['e']) >= 0.4: continue
+        i0 = int(w['s'] * 100)
+        back = next((i for i in range(min(i0, len(voiced) - 1), max(0, i0 - 60), -1) if voiced[i]), None)
+        fwd = next((i for i in range(i0, min(len(voiced), i0 + 60)) if voiced[i]), None)
+        if back is not None and (fwd is None or i0 - back <= fwd - i0):
+            a_, b_ = block(back)
+            j = k
+            while j - 1 >= max(0, k - 6) and out[j - 1]['s'] >= a_ - 0.05: j -= 1
+            idx = list(range(j, k + 1))
+            lo = out[idx[0] - 1]['e'] if idx[0] > 0 else 0.0
+            refit(idx, max(a_, lo), b_)
+        elif fwd is not None:
+            a_, b_ = block(fwd)
+            j = k
+            while j + 1 < min(len(out), k + 7) and out[j + 1]['e'] <= b_ + 0.05: j += 1
+            idx = list(range(k, j + 1))
+            hi = out[idx[-1] + 1]['s'] if idx[-1] + 1 < len(out) else 1e9
+            refit(idx, a_, min(b_, hi))
+    for i in range(1, len(out)):      # final guarantee: in order, no overlaps, nothing shorter than 50 ms
+        if out[i]['s'] < out[i - 1]['e']:
+            mid = (out[i]['s'] + out[i - 1]['e']) / 2
+            out[i - 1]['e'] = round(max(out[i - 1]['s'] + 0.05, mid), 3); out[i]['s'] = out[i - 1]['e']
+        if out[i]['e'] < out[i]['s'] + 0.05: out[i]['e'] = round(out[i]['s'] + 0.05, 3)
+    return out, round(float(best), 2)
 
 
 def apply_fixes(words):
@@ -189,6 +248,7 @@ def main():
                 except Exception as ex2:
                     print('WARNING: transcription failed:', str(ex2)[:300], flush=True); res['transcribe_error'] = str(ex2)[:300]
             res['words'] = apply_fixes(res['words'])
+            res['words'], res['asr_lag_fixed'] = refine_word_times(res['words'], wav)
             ws = res['words']   # pauses between words are the safest cut points
             res['word_gaps'] = [[round(ws[i]['e'], 2), round(ws[i + 1]['s'], 2)] for i in range(len(ws) - 1) if ws[i + 1]['s'] - ws[i]['e'] >= 0.3]
             res['fillers'] = [i for i, w in enumerate(ws) if re.sub(r'\W', '', w['w'].lower()) in FILLERS]

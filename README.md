@@ -21,7 +21,7 @@ git clone https://github.com/Arivumathi323/aarvan-video-kit ~/aarvan-video-kit
 bash ~/aarvan-video-kit/setup.sh        # prints READY
 ```
 
-You need ffmpeg, Python 3.10 or newer, and git. On Windows, use WSL (Ubuntu).
+You need ffmpeg, Python 3.10 or newer, and git. On Windows, use WSL (Ubuntu). Inserts made with HyperFrames also need Node.js 22+ and Chrome.
 
 ## Commands
 
@@ -36,6 +36,11 @@ $K/aarvan render plan.json                 # final render (1080 short side); pri
 $K/aarvan render plan.json --remix         # rebuild only the sound onto the finished video (seconds)
 $K/aarvan qa plan.json --target reels      # numeric checks: hook, dead air, pacing, safe zones, face, Drop, voice level, loudness
 $K/aarvan voice script.txt vo/             # brand voice-over, one line per shot (for silent clips)
+$K/aarvan testshot test.mp4 --for reels    # before filming: framing, headroom, light, steadiness, voice level, room noise
+$K/aarvan reference reel.mp4 ref/          # break down a reel whose style you want (cuts, pace, hook, tempo, stills)
+$K/aarvan render plan.json --beats         # beat sheet + "Cut out" list to approve before rendering
+$K/aarvan render plan.json --cutsheet      # a still after every cut and graphic
+$K/aarvan insert --new flow myflow/        # HyperFrames template (n8n-style flow); then: aarvan insert myflow/ flow.mp4
 ```
 
 ## The Aarvan Drop (signature)
@@ -87,6 +92,10 @@ There are two kinds of time in a plan:
      "style": "dark", "strike": true},           // style: dark | accent | light
     {"at": {"word": "agent"}, "until": {"word": "agentic", "n": 1}, "text": "01  AI AGENT", "x": 0.975, "y": 0.17}
   ],                                              // x > 0.9 right-aligns, x < 0.1 left-aligns; same "until" = a list that builds up
+  "inserts": [                       // cut to a screen recording / B-roll / HyperFrames clip while the voice continues
+    {"clip": "flow.mp4", "at": {"word": "n8n"}, "dur": 4.5, "mode": "full", "from": 0.4},
+    {"clip": "demo.mp4", "at": {"word": "hackathons"}, "dur": 4, "mode": "pip", "x": 0.8, "y": 0.36, "w": 0.34, "audio": false}
+  ],
   "titles": [                         // big lines; captions hide while they show
     {"at": [{"word": "i", "n": 3}, {"word": "i", "n": 4}], "lines": ["I AM THE TEACHER.", "I AM THE LEARNER."]}
   ],
@@ -95,6 +104,8 @@ There are two kinds of time in a plan:
   ],
   "end_card": {"at": {"word": "let's"}, "sync": [{"word": "let's"}, {"word": "something"}], "dur": 3.5},
   "music": {"mood": "punchy", "bpm": 116, "volume": 0.42},   // or false; moods: punchy | chill | cinematic
+  "snap_cuts": true,                  // move real cuts into the actual silence (default on)
+  "phone_copy": true,                 // also write <output>_phone.mp4 under ~30 MB (default on)
   "sfx": true,
   "progress_bar": true
 }

@@ -1,6 +1,6 @@
 ---
 name: aarvan-effects
-description: Add video effects to Arivu's talking-head videos. Covers the Aarvan Drop signature and the 45-effect pack (spotlight, orbit, checklist, glass graph, LED sign and more), on the exact word. Use for /effects, a named effect, or "add an effect/zoom/sticker to my video".
+description: Add video effects to Arivu's talking-head videos. Covers the Aarvan Drop signature and the 51-effect pack (spotlight, orbit, checklist, glass graph, LED sign and more), on the exact word. Use for /effects, a named effect, or "add an effect/zoom/sticker to my video".
 ---
 
 # Aarvan effects
@@ -38,7 +38,8 @@ If the clip is **silent**, say so. Offer the brand voice-over from aarvan-editor
 
 - **The Aarvan Drop** is the channel's signature: the room dims, an orange band sweeps in, and a giant white word slams down behind his head with a whoosh-boom. Use it **once per video** on the most important word. Suggest it whenever he asks for "our effect", "signature" or "the drop".
 - **Pack effects:** match his words to `$K/docs/EFFECTS.md` and the full table in `$K/vendor/claude-video-effects/SKILL.md`. Use at most 2 pack effects plus the Drop. Keep each one 1.5–4 s. Set `"color": "#FF741A"` where the effect has a colour.
-- Never use `backdrop-word` together with the Drop.
+- Never use `backdrop-word` together with the Drop. Keep `huge-strike` and `crayon-write` at least 4 s away from it.
+- New in the pack: `huge-strike` (a giant word crossed out, for "no laptop"-style lines), `crayon-write`, `tape-label`, `select-resize` (for a number), `wave-trim` and `fan-build`.
 - If he names an effect that doesn't exist, show the closest 3 from the list.
 - Pack effects are built for vertical phone video. On tight landscape or webcam shots, check frames carefully: camera effects can over-zoom and panels can crowd the face.
 

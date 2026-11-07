@@ -46,6 +46,8 @@ class Edit:
         self.T = plan.get('transition', {}).get('dur', 0.3)
         self.audio_mode = plan.get('audio', 'source' if self.info['audio'] else 'voiceover')
         self.segs = [dict(s) for s in plan['segments']]
+        if self.audio_mode == 'source' and self.info['audio'] and plan.get('snap_cuts', True):
+            self.snap_cuts()
         # ---- intro
         it = plan.get('intro', False)
         self.intro = None
@@ -84,6 +86,44 @@ class Edit:
 
     def Tnext(self, k):
         return self.segs[k + 1]['T'] if k + 1 < len(self.segs) else self.T
+    # ---- cut edges land in the real silence (transcript word times drift ~0.1 s)
+    def snap_cuts(self, reach=0.12):
+        wav = os.path.join(self.work, 'source16k.wav')
+        if not os.path.exists(wav):
+            subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', self.src, '-vn', '-ac', '1', '-ar', '16000', wav], check=True)
+        a, sr = sf.read(wav)
+        hop = int(sr * 0.01); e = np.array([np.sqrt((a[i:i + hop] ** 2).mean() + 1e-12) for i in range(0, len(a) - hop, hop)])
+        e = np.convolve(e, np.ones(3) / 3, 'same')
+        floor = np.percentile(e, 10)
+        def quietest(t, side):
+            """side='out': the cut ends audio here, so the 60 ms BEFORE it must be quiet;
+            side='in': audio starts here, so the 60 ms AFTER it must be quiet (no word tails, no clipped onsets)."""
+            i0, i1 = max(6, int((t - reach) * 100)), min(len(e) - 7, int((t + reach) * 100))
+            if i1 <= i0: return t
+            seg = e[i0:i1 + 1]; thr = max(seg.min() * 1.6, floor * 2.0)
+            c = int(round(t * 100))
+            cand = [i for i in range(i0, i1 + 1)
+                    if (e[i - 6:i + 1] <= thr).all() if side == 'out'] if side == 'out' else \
+                   [i for i in range(i0, i1 + 1) if (e[i:i + 7] <= thr).all()]
+            if not cand:
+                ok = np.where(seg <= thr)[0]
+                return (i0 + int(ok[np.argmin(np.abs(ok + i0 - c))])) / 100 if len(ok) else t
+            return min(cand, key=lambda i: abs(i - c)) / 100
+        def segT(s):                       # transition INTO a shot (per-shot "trans" or the plan default)
+            tr = s.get('trans')
+            return float(tr.get('dur', self.T)) if isinstance(tr, dict) else (float(tr) if isinstance(tr, (int, float)) else self.T)
+        n = len(self.segs); moved = []
+        for k, s in enumerate(self.segs):
+            Tin = segT(s); Tout = segT(self.segs[k + 1]) if k + 1 < n else self.T
+            content_in = k == 0 or s['in'] > self.segs[k - 1]['out'] - Tin + 0.01      # a real cut, not an overlap jump
+            content_out = k == n - 1 or self.segs[k + 1]['in'] > s['out'] - Tout + 0.01
+            if content_in:
+                off = Tin / 2 if k > 0 else 0.0; q = quietest(s['in'] + off, 'in') - off
+                if abs(q - s['in']) > 0.005: moved.append(round(q - s['in'], 2)); s['in'] = round(max(0.0, q), 3)
+            if content_out:
+                off = Tout / 2 if k < n - 1 else 0.0; q = quietest(s['out'] - off, 'out') + off
+                if abs(q - s['out']) > 0.005: moved.append(round(q - s['out'], 2)); s['out'] = round(min(self.info['dur'], q), 3)
+        self.snapped = moved
 
     # ---- time mapping
     def src_to_out(self, ts):
@@ -207,7 +247,7 @@ class Footage:
 
     def close(self, keep):
         for k in list(self.readers):
-            if k not in keep: self.readers[k]['gen'].close(); del self.readers[k]
+            if isinstance(k, int) and k not in keep: self.readers[k]['gen'].close(); del self.readers[k]
 
 
 # ====================================================================== renderer
@@ -230,6 +270,7 @@ class Renderer:
             self.masks = masks_for(footage, self.F.info, [(a, b)])
             self.mask_fps = self.F.info['fps']
         self.chunks = self.make_chunks()
+        self.ins_src = {}
 
     # ---------- repo effects (vendored claude-video-effects) ----------
     def effects_pass(self):
@@ -366,13 +407,16 @@ class Renderer:
             sc = fit * (1.45 - 0.45 * land) * (1 + 0.025 * math.sin(max(lt, 0) * 3)) * (1 - 0.15 * out)
             y = word_y - (1 - ease_out((lt + 0.06) / 0.2)) * H * 0.18 - out * H * 0.08
             al = clamp((lt + 0.06) / 0.08) * (1 - out)
-            if 'sig_front' not in self.__dict__:   # decide once: how much of the word would the head cover?
-                hw, hh = spr.shape[1] * fit / 2, spr.shape[0] * fit / 2
-                ys, xs = slice(int(max(0, word_y - hh)), int(min(H, word_y + hh))), slice(int(max(0, W / 2 - hw)), int(min(W, W / 2 + hw)))
-                ink = spr[..., 3] > 128
-                cover = float((m[ys, xs] > 0.5).mean()) if mask is not None else 0.0
-                self.sig_front = cover > 0.22 or sg.get('front', False)
-            blit(fr, spr, W / 2, y, scale=sc, alpha=al, mask_below=None if self.sig_front else m)
+            if 'sig_front' not in self.__dict__ and mask is not None:   # decide once, on the first frame of the Drop
+                s_ = fit; sw_, sh_ = max(1, int(spr.shape[1] * s_)), max(1, int(spr.shape[0] * s_))
+                ink = cv2.resize(spr[..., 3], (sw_, sh_)) > 128
+                x0_, y0_ = int(W / 2 - sw_ / 2), int(word_y - sh_ / 2)
+                xa, ya, xb, yb = max(0, x0_), max(0, y0_), min(W, x0_ + sw_), min(H, y0_ + sh_)
+                ink_c = ink[ya - y0_:yb - y0_, xa - x0_:xb - x0_]
+                hidden = float((ink_c & (m[ya:yb, xa:xb] > 0.5)).sum() / max(1, ink_c.sum()))
+                self.sig_front = hidden > 0.10 or sg.get('front', False)    # more than 10% of the letters hidden -> in front
+            front = self.__dict__.get('sig_front', sg.get('front', False))
+            blit(fr, spr, W / 2, y, scale=sc, alpha=al, mask_below=None if front else m)
         # 4) white flash on impact
         if 0 <= lt < 0.1:
             f = 0.28 * (1 - lt / 0.1); fr[:] = fr * (1 - f) + 255 * f
@@ -542,6 +586,14 @@ class Renderer:
             self.items.append(('nametag', t0, E.until(d.get('until'), t0), d))
         for st in E.p.get('stickers', []):
             t0 = E.anchor(st['at']); self.items.append(('sticker', t0, E.until(st.get('until'), t0), st)); self.pops.append(t0)
+        self.inserts = []
+        for i, ins in enumerate(E.p.get('inserts', [])):
+            t0 = E.anchor(ins['at'])
+            path = ins['clip'] if os.path.isabs(ins['clip']) else os.path.join(E.dir, ins['clip'])
+            cdur = probe(path)['dur']
+            t1 = E.anchor(ins['until']) if ins.get('until') is not None else t0 + min(ins.get('dur', cdur), cdur)
+            self.inserts.append(dict(ins, path=path, t0=t0, t1=min(t1, t0 + cdur), key=f'ins{i}'))
+            self.pops.append(t0)
         for tl in E.p.get('titles', []):
             ts = [E.anchor(a) for a in tl['at']]
             t1 = E.until(tl.get('until'), ts[0]); self.items.append(('title', ts[0], t1, dict(tl, times=ts)))
@@ -585,6 +637,42 @@ class Renderer:
                     y0 = d.get('y', .76 if not E.vertical else .62) * H
                     blit(fr, spr, W / 2, y0 + i * 90 * u * fit, scale=sc * fit, alpha=al)
 
+    # ---------- inserts: screen recordings, HyperFrames clips, B-roll ----------
+    def draw_inserts(self, fr, t):
+        E = self.E; W, H, u = E.W, E.H, E.u
+        for ins in getattr(self, 'inserts', []):
+            if not (ins['t0'] <= t < ins['t1']): continue
+            if ins['key'] not in self.ins_src: self.ins_src[ins['key']] = Footage(E, ins['path'])
+            F = self.ins_src[ins['key']]; lt = t - ins['t0'] + ins.get('from', 0.0)
+            img = F.frame(ins['key'], lt).astype(np.float32)
+            fin = ease_out((t - ins['t0']) / 0.25); fout = 1 - ease_io((t - ins['t1'] + 0.25) / 0.25)
+            a = min(fin, fout)
+            if ins.get('mode', 'full') == 'full':
+                sc = max(W / F.SW, H / F.SH) if abs(F.SW / F.SH - W / H) < 0.15 else min(W / F.SW, H / F.SH)
+                sc *= 1.04 - 0.04 * fin
+                M = np.float32([[sc, 0, (W - F.SW * sc) / 2], [0, sc, (H - F.SH * sc) / 2]])
+                layer = cv2.warpAffine(img, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+                inside = cv2.warpAffine(np.ones((F.SH, F.SW), np.float32), M, (W, H))[..., None]
+                if (inside < 0.99).any():   # letterbox: blurred copy behind
+                    Mb = np.float32([[max(W / F.SW, H / F.SH), 0, 0], [0, max(W / F.SW, H / F.SH), 0]])
+                    Mb[0, 2] = (W - F.SW * Mb[0, 0]) / 2; Mb[1, 2] = (H - F.SH * Mb[1, 1]) / 2
+                    bg = cv2.GaussianBlur(cv2.warpAffine(img, Mb, (W, H)), (0, 0), 25 * u) * 0.4
+                    layer = layer * inside + bg * (1 - inside)
+                fr[:] = fr * (1 - a) + layer * a
+            else:                           # picture-in-picture card with brand border
+                cw = int(ins.get('w', 0.42) * W); ch = int(cw * F.SH / F.SW)
+                card = cv2.resize(img, (cw, ch), interpolation=cv2.INTER_AREA)
+                b = max(3, int(5 * u)); rad = int(18 * u)
+                spr = np.zeros((ch + 2 * b, cw + 2 * b, 4), np.float32)
+                spr[..., :3] = ACCENT; spr[b:b + ch, b:b + cw, :3] = card
+                m = np.zeros(spr.shape[:2], np.uint8)
+                cv2.rectangle(m, (rad, 0), (m.shape[1] - rad, m.shape[0]), 255, -1); cv2.rectangle(m, (0, rad), (m.shape[1], m.shape[0] - rad), 255, -1)
+                for cx_, cy_ in [(rad, rad), (m.shape[1] - rad, rad), (rad, m.shape[0] - rad), (m.shape[1] - rad, m.shape[0] - rad)]:
+                    cv2.circle(m, (cx_, cy_), rad, 255, -1, cv2.LINE_AA)
+                spr[..., 3] = m
+                pop = back_out((t - ins['t0']) / 0.35)
+                blit(fr, spr.astype(np.uint8), ins.get('x', 0.72) * W, ins.get('y', 0.42) * H, scale=0.6 + 0.4 * pop, alpha=a)
+
     # ---------- one frame ----------
     def render(self, t):
         E = self.E
@@ -599,6 +687,7 @@ class Renderer:
                 fr = cv2.GaussianBlur(fr, (0, 0), 1 + 14 * p * E.u) * (1 - .72 * p) + np.array(DARK, np.float32) * .72 * p
             if not E.end or t < E.end['start']:
                 self.draw_signature(fr, t, mask)
+                self.draw_inserts(fr, t)
                 self.draw_graphics(fr, t)
                 if self.chunks: self.draw_captions(fr, t)
             else:
@@ -671,6 +760,14 @@ def build_audio(E, R, path):
         for t in R.pops: put(fx, pop, t, 0.35)
         if E.sig: put(fx, drop, E.sig['t_out'] - 0.5, 0.8)
         if E.end: put(fx, wh, E.end['start'] - 0.5, 0.5); put(fx, imp, E.end['start'] - 0.02, 0.5)
+    for ins in getattr(R, 'inserts', []):          # inserts with their own sound (e.g. a demo click), under the voice
+        if ins.get('audio'):
+            try:
+                ia = os.path.join(E.work, ins['key'] + '.wav')
+                subprocess.run(['ffmpeg', '-v', 'error', '-y', '-ss', str(ins.get('from', 0.0)), '-t', f"{ins['t1'] - ins['t0']:.3f}", '-i', ins['path'],
+                                '-vn', '-ac', '2', '-ar', str(sr), ia], check=True)
+                put(fx, load(ia, sr), ins['t0'], float(ins.get('audio_gain', 0.5)))
+            except Exception as ex: print('insert audio skipped:', ex)
     # ---- dialogue-first mix: the voice sets every other level ----
     db = lambda x: 20 * np.log10(np.sqrt((x ** 2).mean()) + 1e-12)
     act = np.abs(voice).max(1) > max(0.002, np.abs(voice).max() * 0.06)
@@ -705,12 +802,72 @@ def build_audio(E, R, path):
     sf.write(path, mix, sr)
 
 
+def phone_copy(path, dur, max_mb=28):
+    """A copy that stays under ~30 MB for WhatsApp / college portals / quick uploads."""
+    out = os.path.splitext(path)[0] + '_phone.mp4'
+    vk = int(max(600, min(8000, (max_mb * 8 * 1024 * 1024 / max(dur, 1) - 160_000) / 1000)))
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', path, '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', f'{vk}k',
+                    '-maxrate', f'{int(vk * 1.3)}k', '-bufsize', f'{vk * 2}k', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out], check=True)
+    return f'{out} ({os.path.getsize(out) / 1048576:.1f} MB)'
+
+
+def write_beats(E, G):
+    """Beat sheet: every shot on the output timeline with its words and what is on screen, then everything that was cut."""
+    FILL = {'uh', 'um', 'umm', 'uhh', 'hmm', 'er', 'ah', 'eh'}
+    clean = lambda ws: ' '.join(w['w'] for w in ws if re.sub(r'\W', '', w['w'].lower()) not in FILL and not w.get('skip'))
+    fmt = lambda t: f'{int(t // 60)}:{t % 60:04.1f}'
+    L = [f"# Beat sheet · {os.path.basename(E.out)}", '',
+         f"**Length {fmt(E.TOTAL)}** · {E.W}x{E.H} · target `{E.p.get('target', '-')}` · {len(E.segs)} shots · audio: {E.audio_mode}", '',
+         '| Time | Words | On screen | Shot |', '|---|---|---|---|']
+    if E.intro: L.append(f"| 0:00.0 | (intro) | Intro card: {E.intro['title']} / {E.intro['subtitle']} + logo | card |")
+    events = [(t0, kind, d) for kind, t0, t1, d in G.items]
+    if E.sig: events.append((E.sig['t_out'], 'drop', E.sig))
+    for e in E.p.get('effects', []):
+        o = E.src_to_out(e['start'])
+        if o is not None: events.append((o, 'effect', e))
+    for ins in getattr(G, 'inserts', []): events.append((ins['t0'], 'insert', ins))
+    for k, s in enumerate(E.segs):
+        a, b = s['start'], s['start'] + s['dur']
+        ws = clean([w for w in E.words if w['seg'] == k])
+        on = []
+        for t0, kind, d in sorted(events, key=lambda x: x[0]):
+            if a <= t0 < b - (E.T if k < len(E.segs) - 1 else 0):
+                lab = {'sticker': lambda: f"sticker **{d.get('text')}**", 'nametag': lambda: f"name tag {d.get('name')}",
+                       'title': lambda: 'title ' + ' / '.join(d.get('lines', [])), 'drop': lambda: f"**AARVAN DROP: {d.get('text')}**",
+                       'effect': lambda: f"effect `{d.get('fx')}`",
+                       'insert': lambda: f"insert {'full screen' if d.get('mode', 'full') == 'full' else 'card'} `{os.path.basename(d.get('clip'))}` until {fmt(d['t1'])}"}[kind]()
+                on.append(f'{fmt(t0)} {lab}')
+        L.append(f"| {fmt(a)}–{fmt(b)} | {ws or '—'} | {'<br>'.join(on) or 'captions'} | zoom {s['zoom']} · src {s['in']:.2f}–{s['out']:.2f} |")
+    if E.end: L.append(f"| {fmt(E.end['start'])} | (end) | End card: {' / '.join(E.end['lines'])} · {E.end['handle']} | card |")
+    an = E.p.get('analysis')
+    if an and E.audio_mode == 'source':
+        an = json.load(open(an if os.path.isabs(an) else os.path.join(E.dir, an)))
+        cuts, prev = [], 0.0
+        spans = [(s['in'], s['out']) for s in E.segs]
+        merged = []
+        for x, y in sorted(spans):
+            if merged and x <= merged[-1][1] + 0.01: merged[-1][1] = max(merged[-1][1], y)
+            else: merged.append([x, y])
+        bounds = [0.0] + [v for m in merged for v in m] + [E.info['dur']]
+        L += ['', '## Cut out', '', '| Source | Words removed | Length |', '|---|---|---|']
+        for i in range(0, len(bounds), 2):
+            x, y = bounds[i], bounds[i + 1]
+            if y - x < 0.25: continue
+            ws = [w for w in an['words'] if x <= (w['s'] + w['e']) / 2 < y]
+            L.append(f"| {fmt(x)}–{fmt(y)} | {' '.join(w['w'] for w in ws) or '(silence)'} | {y - x:.1f}s |")
+    L += ['', 'OK this sheet before the final render. Change a row by telling Claude the time and what you want.']
+    p = os.path.splitext(E.out)[0] + '_BEAT-SHEET.md'
+    open(p, 'w').write('\n'.join(L) + '\n'); return p
+
+
 # ====================================================================== main
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('plan'); ap.add_argument('--draft', action='store_true')
     ap.add_argument('--still'); ap.add_argument('--sheet', type=int); ap.add_argument('--timeline', action='store_true')
     ap.add_argument('--remix', action='store_true', help='rebuild only the sound and put it on the existing output video')
+    ap.add_argument('--beats', action='store_true', help='write <output>_BEAT-SHEET.md: every shot, its words, what is on screen, and what was cut')
+    ap.add_argument('--cutsheet', action='store_true', help='contact sheet with a still just after every cut and every graphic')
     a = ap.parse_args()
     plan = json.load(open(a.plan)); pdir = os.path.dirname(os.path.abspath(a.plan))
     E = Edit(plan, pdir, short=720 if (a.draft or a.still or a.sheet) else None)
@@ -729,8 +886,22 @@ def main():
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', E.out, '-i', wav, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
                         '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.85:level=false', '-ar', '48000', '-movflags', '+faststart', '-shortest', tmp], check=True)
         os.replace(tmp, E.out); os.remove(wav); print('Remixed:', E.out); return
+    if a.beats:
+        G2 = Renderer.__new__(Renderer); G2.E = E; Renderer.prepare_graphics(G2)
+        print('saved', write_beats(E, G2)); return
     R = Renderer(E); R.prepare_graphics()
     base = os.path.splitext(E.out)[0]
+    if a.cutsheet:
+        ts = sorted(set([round(s['start'] + E.T + 0.15, 2) for s in E.segs[1:]] + [round(t0 + 0.35, 2) for _, t0, _, _ in R.items]
+                        + ([round(E.sig['t_out'] + 0.4, 2)] if E.sig else []) + [0.5, round(E.TOTAL - 0.5, 2)]))
+        cols = 6 if not E.vertical else 8; tw = 320 if not E.vertical else 180; th = int(tw * E.H / E.W)
+        rows = (len(ts) + cols - 1) // cols
+        from PIL import ImageDraw
+        S = Image.new('RGB', (cols * tw, rows * th), (20, 20, 20))
+        for i, t in enumerate(ts):
+            im = Image.fromarray(R.render(t)).resize((tw, th)); ImageDraw.Draw(im).text((6, 6), f'{t:.1f}s', fill=(255, 60, 60))
+            S.paste(im, ((i % cols) * tw, (i // cols) * th))
+        S.save(base + '_cutsheet.jpg', quality=88); print('saved', base + '_cutsheet.jpg', f'({len(ts)} stills)'); return
     if a.still or a.sheet:
         ts = [float(x) for x in a.still.split(',')] if a.still else list(np.linspace(0.6, E.TOTAL - 0.4, a.sheet))
         if a.sheet and E.sig and all(abs(t - E.sig['t_out'] - .4) > .5 for t in ts): ts = sorted(ts[:-1] + [E.sig['t_out'] + 0.4])
@@ -762,7 +933,11 @@ def main():
                     '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.85:level=false', '-ar', '48000', '-movflags', '+faststart', '-shortest', out_tmp], check=True)
     os.replace(out_tmp, E.out); os.remove(tmp); os.remove(wav)
     print('Done:', E.out)
+    if E.p.get('phone_copy', True):
+        print('Phone copy:', phone_copy(E.out, E.TOTAL))
 
 
 if __name__ == '__main__':
     main()
+    sys.stdout.flush(); sys.stderr.flush()
+    os._exit(0)   # skip MediaPipe's noisy shutdown handler

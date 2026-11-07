@@ -2,6 +2,8 @@
 Models come from the vendored claude-video-effects repo (MIT / Apache-2.0)."""
 import os, subprocess, math
 import numpy as np, cv2
+try: cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
+except Exception: pass
 from common import ROOT
 
 MODELS = os.path.join(ROOT, 'vendor', 'claude-video-effects', 'models')

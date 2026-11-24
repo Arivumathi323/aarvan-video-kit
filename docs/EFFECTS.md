@@ -24,6 +24,13 @@ Keep each effect short (1.5–4 s), and use at most 2 per video plus the Aarvan 
 
 **Don't use** `backdrop-word`, `huge-strike` or `crayon-write` within 4 s of the Aarvan Drop: they're the same kind of move (a word behind the head), and the Drop must stay special. The Drop is our own version of that move.
 
+## Our additions to the pack (`patches/`, applied by `setup.sh`)
+
+- `match-cut`: `"words": "AI agents|AI news|Aarvan Labs|..."` fills the flashing pages with your own words instead of filler text (like a brand wall).
+- `led-sign`: `"y": 0.055` pins the top of the sign (fraction of the frame height). Use it when there is little headroom and your head would hide the sign. Keep it at 0.05 or lower down, out of Instagram's top bar.
+
+Tested together on 2026-11-24 as a brand showcase (one section, four effects back to back): led-sign "AARVAN LABS" → match-cut "AARVAN" → dot-reveal → red-collage "AARVAN". For a showcase reel, using more than 2 effects is deliberate; for normal videos keep the limit.
+
 ## Notes
 
 - Camera effects (`locked-on`, `lean-in`, `slow-push`, `spotlight` push) change the framing. Keep that shot's `zoom` at 1.0 so the two zooms don't stack.

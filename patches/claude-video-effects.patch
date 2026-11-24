@@ -1,0 +1,27 @@
+diff --git a/scripts/fx.py b/scripts/fx.py
+index d412322..1c8683a 100755
+--- a/scripts/fx.py
++++ b/scripts/fx.py
+@@ -1576,12 +1576,13 @@ def match_page(c, e, j, wx, wy):
+     kind = ['serif', 'mont', 'ui', 'serif', 'anton', 'monts'][j % 6]
+     size = W * [0.085, 0.07, 0.072, 0.095, 0.08, 0.068][j % 6]; f = font(kind, size); lh = size * 1.22
+     word = e.o.get('text', 'Claude'); red = rgb(e.o.get('color'), (214, 40, 40))
++    pool = [w for w in e.o.get('words', '').split('|') if w.strip()] or MATCH_TXT   # optional: your own words on the pages (e.g. your brand and products)
+     im = Image.new('RGB', (W, H), paper); d = ImageDraw.Draw(im); ink = (40, 38, 36)
+     base = f.getbbox('Ag'); asc = -base[1]
+     ww = f.getlength(word); bx0 = wx - ww / 2
+     def run(x, y, direction):
+         while (x < W + size if direction > 0 else x > -size * 6):
+-            w_ = rnd.choice(MATCH_TXT) + ' '
++            w_ = rnd.choice(pool) + ' '
+             if direction < 0: x -= f.getlength(w_)
+             d.text((x, y), w_, font=f, fill=ink)
+             if direction > 0: x += f.getlength(w_)
+@@ -1686,6 +1687,7 @@ def fx_led_sign(c, e):
+     pan = np.clip(pan + glow * 1.6, 0, 1)
+     ph, pw = pan.shape[:2]; x0 = int(c.W / 2 - pw / 2)
+     y0 = int(max(c.H * 0.03, c.fy - c.fw * 0.75 - ph))
++    if e.o.get('y') is not None: y0 = int(float(e.o['y']) * c.H)   # optional: pin the sign's top (fraction of height) when there is little headroom
+     xx, yy = grid(c)
+     d = ((xx - c.fx) / (c.W * 0.6)) ** 2 + ((yy - (c.fy + c.H * 0.25)) / (c.H * 0.55)) ** 2
+     bright = 1 - k * (0.84 - 0.3 * np.clip(1 - d, 0, 1))

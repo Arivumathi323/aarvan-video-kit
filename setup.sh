@@ -15,6 +15,12 @@ fi
 if [ "$(git -C vendor/claude-video-effects rev-parse HEAD)" != "$EFFECTS_COMMIT" ]; then   # upgrade older installs
   git -C vendor/claude-video-effects fetch -q origin && git -C vendor/claude-video-effects checkout -q "$EFFECTS_COMMIT"
 fi
+# our small additions to the pack (patches/): match-cut `words`, led-sign `y`. Applied once, skipped if already in.
+for p in patches/*.patch; do
+  [ -f "$p" ] || continue
+  if git -C vendor/claude-video-effects apply --check "$PWD/$p" 2>/dev/null; then git -C vendor/claude-video-effects apply "$PWD/$p"
+  elif ! git -C vendor/claude-video-effects apply -R --check "$PWD/$p" 2>/dev/null; then echo "WARN: could not apply $p"; fi
+done
 
 # 2) python packages: a local .venv when possible, otherwise the system python
 PY=python3

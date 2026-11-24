@@ -8,6 +8,8 @@
 #   aarvan reference reel.mp4 out_dir         break down a reel you want to copy the style of (cuts, pace, hook, tempo, stills)
 #   aarvan insert <html_project> out.mp4      render a HyperFrames animation (n8n flow, UI screen) to drop into an edit
 #   aarvan insert --new flow my_flow/          start from the Aarvan flow template
+#   aarvan hud --new my_hud/                    start from the Aarvan Hologram HUD template (two example inserts)
+#   aarvan hud my_hud/ out.mp4 --insert 1 [--size 1080x1920]   render a HUD insert (needs Lemo-Opuscar; fetched on first use)
 #   aarvan qa plan.json [--target reels|shorts|youtube|assignment|client]   numeric checks before/after render
 #   aarvan effects --plan fx.json raw.mp4 out.mp4   run the raw effects pack only (see vendor README)
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -21,7 +23,8 @@ case "$cmd" in
   testshot) exec "$PY" "$DIR/kit/testshot.py" "$@" ;;
   reference) exec "$PY" "$DIR/kit/reference.py" "$@" ;;
   insert)  exec "$PY" "$DIR/kit/insert.py" "$@" ;;
+  hud)     exec "$PY" "$DIR/kit/hud.py" "$@" ;;
   qa)      exec "$PY" "$DIR/kit/qa.py" "$@" ;;
   effects) exec "$PY" "$DIR/vendor/claude-video-effects/scripts/fx.py" "$@" ;;
-  *) sed -n '2,13p' "$0"; exit 1 ;;
+  *) sed -n '2,15p' "$0"; exit 1 ;;
 esac

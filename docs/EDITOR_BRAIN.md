@@ -98,6 +98,7 @@ Before touching a frame, answer these four questions in one line each:
   - Use `inserts` for a screen recording, B-roll, or a HyperFrames animation made with `aarvan insert`. The `brand/hyperframes/flow` template is an n8n-style flow.
   - Full screen for 2–5 s while his voice continues, or a picture-in-picture card (`mode: "pip"`) placed beside his face, never over it.
   - Every number on screen needs a source he can name; otherwise say it as an estimate.
+  - For AI, automation or product concepts, a **Hologram HUD** insert (`aarvan hud`, see `brand/hud/README.md`) explains it visually: full screen 3–5 s while his voice continues, 2–4 per minute at most. Keep HUD text above 62% of the frame so the captions stay clear.
 - **Word-behind-the-head moves** (`backdrop-word`, `huge-strike`, `crayon-write`) stay 4 s or more away from the Aarvan Drop, so the Drop stays special.
 - **Brand:** orange #FF741A, black and white; Inter Black and Poppins; the logo on intro and end cards.
 
@@ -151,4 +152,6 @@ Add one line for every mistake Arivu catches, and turn it into a rule or a QA ch
 - **2026-11-07 · Word times were up to 0.5 s late** (Parakeet stamped "College" after he finished saying it). Now `refine_word_times` aligns words to the real speech (78% → 85% of word time on speech).
 - **2026-11-07 · A word tail was clipped at a cut** ("branding" at 92.7 s; found by the new read-back check). Now cut edges snap into real silence with a 60 ms margin.
 - **2026-11-07 · His head hid the middle of the Drop word in the vertical fit layout** ("AG…TIC"). Now it measures hidden *letters* (not the word's box) on the first frame, and brings the word to the front if more than 10% is covered. Recurring mishearings (go code → go-kart, athletic/aesthetic OS → agentic OS) were added to `asr_fixes`.
+- **2026-11-24 · A picture-in-picture card covered his mouth and was too small to read** (HUD feed card at 0.42 width over a high head). Now HUD inserts go full screen in vertical videos, with all their text above 62% of the height.
+- **2026-11-24 · The LED sign hid behind his head** (480p clip, little headroom). Added `y` to led-sign to pin it above the head; match-cut got `words` so the pages show Aarvan words, not filler (patches/).
 - **2026-11-07 · Ideas adopted from the Cyber Voyage guide:** johnACQ/reel-kit (read-back at cuts, number/"not" checks, beat sheet, filming card, phone copy, saved defaults) and Vibha's /watch idea (`aarvan reference`). HyperFrames is used for inserts. Remotion and rohandindokar/reel_kit were skipped (they overlap with ours, and they're licensing-limited or made for faceless reels).

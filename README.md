@@ -41,6 +41,7 @@ $K/aarvan reference reel.mp4 ref/          # break down a reel whose style you w
 $K/aarvan render plan.json --beats         # beat sheet + "Cut out" list to approve before rendering
 $K/aarvan render plan.json --cutsheet      # a still after every cut and graphic
 $K/aarvan insert --new flow myflow/        # HyperFrames template (n8n-style flow); then: aarvan insert myflow/ flow.mp4
+$K/aarvan hud --new myhud/                  # Hologram HUD template (code-drawn wireframe cutaways); then: aarvan hud myhud/ hud.mp4 --insert 1
 ```
 
 ## The Aarvan Drop (signature)

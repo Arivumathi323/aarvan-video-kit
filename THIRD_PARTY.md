@@ -12,6 +12,10 @@
 | HyperFrames by HeyGen | run on demand with `npx hyperframes@0.9.19` (telemetry off) for inserts | Apache 2.0 |
 | GSAP | downloaded from npm at render time into the HyperFrames project (not redistributed here) | GSAP standard licence (free) |
 | NVIDIA Parakeet TDT 0.6B v2 (sherpa-onnx int8 export) | downloaded on demand from k2-fsa/sherpa-onnx GitHub releases to `~/.cache/aarvan-video-kit/asr` | CC-BY-4.0 (model), Apache 2.0 (sherpa-onnx) |
+| Hologram HUD engine (`brand/hud/engine/holo.js`, `hud.js`, `brand/hud/models/mkmodel.mjs`) from Lemo-Opuscar by Lemomo (LemoLab) | `brand/hud/` | MIT |
+| Lemo-Opuscar render tools (`core/render/`) | cloned on first `aarvan hud` to `~/lemo-opuscar` (not redistributed here; its style prompts are CC BY-NC and are not copied) | MIT (code) |
+| Rajdhani, Share Tech Mono | `brand/hud/fonts/` | SIL OFL 1.1 |
+| Small patch to claude-video-effects (`patches/`) | applied by `setup.sh` | MIT (same as the pack) |
 | Aarvan Labs logo (`brand/logo.png`) | brand asset | © Aarvan Labs, not covered by the MIT licence |
 
 The music and sound effects are synthesised by `kit/music.py`. They're original, so there's nothing to license.
